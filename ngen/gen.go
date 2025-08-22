@@ -10,6 +10,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/go-lazyer/norm/driver"
 	"github.com/go-lazyer/norm/nutil"
 )
 
@@ -170,7 +171,7 @@ func getFields(tableName, driverName string, db *sql.DB) ([]Field, []Field, erro
 					table_schema = DATABASE() `
 	sqlStr += fmt.Sprintf(" and t.table_name = '%s' order by is_primary_key desc", tableName)
 
-	if driverName == "postgres" {
+	if driverName == driver.DRIVER_NAME_POSTGRES {
 		sqlStr = `SELECT 
 						t.column_name name ,
 						t.udt_name type,
@@ -231,7 +232,7 @@ func (gen *Generator) Gen(modules []Module) error {
 		return errors.New("dsn can not nil")
 	}
 	if gen.driverName == "" {
-		gen.driverName = "mysql"
+		gen.driverName = driver.DRIVER_NAME_MYSQL
 	}
 	db, err := sql.Open(gen.driverName, gen.dsn)
 	if err != nil {
