@@ -1,5 +1,3 @@
-
-
 # norm
 
 ### 一、介绍
@@ -11,7 +9,7 @@ go get github.com/go-lazyer/norm@latest
 ```
 #### 2、介绍
 
-norm 由3部分组成。norm为主模块，用与真实与数据库交互。nsql`github.com/go-lazyer/norm/nsql`和ngen `github.com/go-lazyer/norm/ngen` 为辅助模块，其中nsql用于sql 生成，ngen用于生成表对应的struct，以及一些相关dao层代码，减少开发者自行拼接sql，和table to struct的工作量，可以专注于核心业务代码。该工具是模仿 mybatis-generator 实现的，同时又借鉴了go elastic工具的包github.com/olivere/elastic 的查询实现方式，所以熟悉 mybatis-generator和olivere 及容易上手。该工具支持mysql/pgsql。
+norm 专为golang 开发的轻量级 orm 工具。 分三个模块。norm为主模块，真实与数据库交互，底层为golang自带的database/sql。nsql`github.com/go-lazyer/norm/nsql`和ngen `github.com/go-lazyer/norm/ngen` 为辅助模块，其中nsql用于sql 生成，ngen用于生成表对应的struct，以及一些crud代码，减少开发者自行拼接sql，和table to struct的工作量，可以专注于核心业务代码。该工具支持mysql/pgsql。
 
 #### 3、简单查询
 
