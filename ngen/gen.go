@@ -10,8 +10,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/go-lazyer/north/nfile"
-	"github.com/go-lazyer/north/nstring"
+	"github.com/go-lazyer/norm/nutil"
 )
 
 type Generator struct {
@@ -202,8 +201,8 @@ func getFields(tableName, driverName string, db *sql.DB) ([]Field, []Field, erro
 		if err != nil {
 			panic(err)
 		}
-		field.FieldName = nstring.ToUpperCamelCase(field.ColumnName)
-		field.ColumnNameLowerCamel = nstring.ToLowerCamelCase(field.ColumnName)
+		field.FieldName = nutil.ToUpperCamelCase(field.ColumnName)
+		field.ColumnNameLowerCamel = nutil.ToLowerCamelCase(field.ColumnName)
 		field.ColumnNameUpper = strings.ToUpper(field.ColumnName)
 		field.FieldType = dbType[field.ColumnType].baseType
 		field.FieldTypeDefault = dbType[field.ColumnType].defaultValue
@@ -256,8 +255,8 @@ func (gen *Generator) Gen(modules []Module) error {
 		module.CreateTime = time.Now().Format("2006-01:02 15:04:05.006")
 		module.Fields = fields
 		module.PrimaryKeyFields = primaryKeyFields
-		module.TableNameUpperCamel = nstring.ToUpperCamelCase(tableName)
-		module.TableNameLowerCamel = nstring.ToLowerCamelCase(tableName)
+		module.TableNameUpperCamel = nutil.ToUpperCamelCase(tableName)
+		module.TableNameLowerCamel = nutil.ToLowerCamelCase(tableName)
 		urls := strings.Split(module.ModulePath, gen.project)
 
 		if module.ModelPackageName == "" {
@@ -339,21 +338,21 @@ func genFile(table *Module, packageName string) {
 		templateStr = getExtendTemplate()
 		filePath = table.ExtendFilePath
 		file = filePath + "/" + table.ExtendFileName
-		if nfile.IsExist(file) { //view 不覆盖
+		if nutil.IsExist(file) { //view 不覆盖
 			return
 		}
 	case "view":
 		templateStr = getViewTemplate()
 		filePath = table.ViewFilePath
 		file = filePath + "/" + table.ViewFileName
-		if nfile.IsExist(file) { //view 不覆盖
+		if nutil.IsExist(file) { //view 不覆盖
 			return
 		}
 	case "param":
 		templateStr = getParamTemplate()
 		filePath = table.ParamFilePath
 		file = filePath + "/" + table.ParamFileName
-		if nfile.IsExist(file) { //param 不覆盖
+		if nutil.IsExist(file) { //param 不覆盖
 			return
 		}
 	case "dao":
@@ -364,14 +363,14 @@ func genFile(table *Module, packageName string) {
 		templateStr = getServiceTemplate()
 		filePath = table.ServiceFilePath
 		file = filePath + "/" + table.ServiceFileName
-		if nfile.IsExist(file) { //service 不覆盖
+		if nutil.IsExist(file) { //service 不覆盖
 			return
 		}
 	case "controller":
 		templateStr = getController()
 		filePath = table.ControllerFilePath
 		file = filePath + "/" + table.ControllerFileName
-		if nfile.IsExist(file) { //controller 不覆盖
+		if nutil.IsExist(file) { //controller 不覆盖
 			return
 		}
 	}
@@ -382,7 +381,7 @@ func genFile(table *Module, packageName string) {
 		return
 	}
 	// 第二步，创建文件目录
-	err = nfile.CreateDir(filePath)
+	err = nutil.CreateDir(filePath)
 	if err != nil {
 		fmt.Printf("create path:%v err", filePath)
 		return
@@ -511,7 +510,6 @@ func getDaoTemplate() string {
 		"database/sql"
 		"github.com/go-lazyer/norm"
 		"github.com/go-lazyer/norm/nsql"
-		"lazyer/library/database"
 		"{{.ModelPackagePath}}"
 	)
 

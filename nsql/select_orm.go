@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-lazyer/norm/constant"
+	"github.com/go-lazyer/norm/driver"
 )
 
 type SelectOrm struct {
@@ -178,7 +178,7 @@ func (s *SelectOrm) ToSql(prepare bool) (string, []any, error) {
 		}
 		params = append(params, s.pageSize, s.pageStart)
 		if prepare {
-			sql.WriteString(fmt.Sprintf(" limit %s offset %s", constant.PLACE_HOLDER_GO, constant.PLACE_HOLDER_GO))
+			sql.WriteString(fmt.Sprintf(" limit %s offset %s", driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO))
 		} else {
 			sql.WriteString(fmt.Sprintf(" limit %d offset %d", s.pageSize, s.pageStart))
 		}
@@ -278,7 +278,7 @@ func (s *SelectOrm) ToPrepareSql() (string, [][]any, error) {
 		if s.pageNum > 0 {
 			s.pageStart = (s.pageNum - 1) * s.pageSize
 		}
-		sql.WriteString(fmt.Sprintf(" limit %s offset %s", constant.PLACE_HOLDER_GO, constant.PLACE_HOLDER_GO))
+		sql.WriteString(fmt.Sprintf(" limit %s offset %s", driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO))
 		for i, param := range params {
 			params[i] = append(param, s.pageSize, s.pageStart)
 		}

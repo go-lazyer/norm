@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-lazyer/norm/constant"
-	"github.com/go-lazyer/north/nmap"
+	"github.com/go-lazyer/norm/driver"
+	"github.com/go-lazyer/norm/nutil"
+)
+
+const (
+	CONDITION = "_condition" //
 )
 
 type UpdateOrm struct {
@@ -74,7 +78,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 		fields := make(map[string]string)
 		for _, setMap := range s.update {
 			for name := range setMap {
-				if name == constant.CONDITION {
+				if name == CONDITION {
 					continue
 				}
 				fields[name] = ""
@@ -87,7 +91,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 			}
 			sql.WriteString(fmt.Sprintf("%v = CASE ", field))
 			for _, setMap := range s.update {
-				condition, ok := setMap[constant.CONDITION]
+				condition, ok := setMap[CONDITION]
 				if !ok {
 					return "", nil, errors.New("missing condition in update map for batch update")
 				}
@@ -109,7 +113,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 				params = append(params, param...)
 
 				if prepare {
-					sql.WriteString(fmt.Sprintf(" WHEN %v THEN %v", source, constant.PLACE_HOLDER_GO))
+					sql.WriteString(fmt.Sprintf(" WHEN %v THEN %v", source, driver.PLACE_HOLDER_GO))
 				} else {
 					sql.WriteString(fmt.Sprintf(" WHEN %v THEN %v", source, v))
 				}
@@ -125,7 +129,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 				sql.WriteString(",")
 			}
 			if prepare {
-				sql.WriteString(fmt.Sprintf("%v=%s", name, constant.PLACE_HOLDER_GO))
+				sql.WriteString(fmt.Sprintf("%v=%s", name, driver.PLACE_HOLDER_GO))
 			} else {
 				sql.WriteString(fmt.Sprintf("%v='%v'", name, value))
 			}
@@ -190,7 +194,7 @@ func (s *UpdateOrm) ToPrepareSql() (string, [][]any, error) {
 	var sql bytes.Buffer
 	sql.WriteString("update " + s.tableName + " set ")
 
-	fields := nmap.Keys(s.update[0])
+	fields := nutil.Keys(s.update[0])
 
 	for i, update := range s.update {
 		for n, field := range fields {
@@ -203,7 +207,7 @@ func (s *UpdateOrm) ToPrepareSql() (string, [][]any, error) {
 				if n != 0 {
 					sql.WriteString(",")
 				}
-				sql.WriteString(fmt.Sprintf("%v=%s", field, constant.PLACE_HOLDER_GO))
+				sql.WriteString(fmt.Sprintf("%v=%s", field, driver.PLACE_HOLDER_GO))
 			}
 
 			if len(s.update) == 1 {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-lazyer/norm/constant"
+	"github.com/go-lazyer/norm/driver"
 )
 
 type DeleteOrm struct {
@@ -54,7 +54,7 @@ func (s *DeleteOrm) ToSql(prepare bool) (string, []any, error) {
 		params = append(params, param...)
 	}
 	if s.pageSize > 0 {
-		sql.WriteString(fmt.Sprintf(" limit %s", constant.PLACE_HOLDER_GO))
+		sql.WriteString(fmt.Sprintf(" limit %s", driver.PLACE_HOLDER_GO))
 		params = append(params, s.pageSize)
 	}
 	return sql.String(), params, nil
@@ -89,7 +89,7 @@ func (s *DeleteOrm) ToPrepareSql() (string, [][]any, error) {
 	}
 
 	if s.pageSize > 0 {
-		sql.WriteString(fmt.Sprintf(" limit %s", constant.PLACE_HOLDER_GO))
+		sql.WriteString(fmt.Sprintf(" limit %s", driver.PLACE_HOLDER_GO))
 		for i, param := range params {
 			params[i] = append(param, s.pageSize)
 		}

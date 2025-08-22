@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-lazyer/norm/constant"
-	"github.com/go-lazyer/north/nmap"
+	"github.com/go-lazyer/norm/driver"
+	"github.com/go-lazyer/norm/nutil"
 )
 
 type UpsertOrm struct {
@@ -47,7 +47,7 @@ func (s *UpsertOrm) ToSql(prepare bool) (string, []any, error) {
 	sql.WriteString("(")
 	//把所有要修改的字段提取出来
 
-	fields := nmap.Keys(s.insert[0])
+	fields := nutil.Keys(s.insert[0])
 
 	for n, field := range fields {
 		if n != 0 {
@@ -68,7 +68,7 @@ func (s *UpsertOrm) ToSql(prepare bool) (string, []any, error) {
 			}
 			params = append(params, maps[field])
 			if prepare {
-				sql.WriteString(fmt.Sprintf(" %s ", constant.PLACE_HOLDER_GO))
+				sql.WriteString(fmt.Sprintf(" %s ", driver.PLACE_HOLDER_GO))
 			} else {
 				sql.WriteString(fmt.Sprintf(" '%v' ", maps[field]))
 			}
@@ -102,7 +102,7 @@ func (s *UpsertOrm) ToPrepareSql() (string, [][]any, error) {
 	sql.WriteString("(")
 	//把所有要修改的字段提取出来
 
-	fields := nmap.Keys(s.insert[0])
+	fields := nutil.Keys(s.insert[0])
 
 	var valuesSql bytes.Buffer
 	for n, field := range fields {
@@ -111,7 +111,7 @@ func (s *UpsertOrm) ToPrepareSql() (string, [][]any, error) {
 			valuesSql.WriteString(",")
 		}
 		sql.WriteString(" " + field + " ")
-		valuesSql.WriteString(" " + constant.PLACE_HOLDER_GO + " ")
+		valuesSql.WriteString(" " + driver.PLACE_HOLDER_GO + " ")
 	}
 	sql.WriteString(") values (" + valuesSql.String() + ")")
 	params := make([][]any, 0, len(s.insert))

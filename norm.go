@@ -8,9 +8,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-lazyer/norm/constant"
+	"github.com/go-lazyer/norm/driver"
 	"github.com/go-lazyer/norm/nsql"
-	"github.com/go-lazyer/north/nmap"
+	"github.com/go-lazyer/norm/nutil"
 )
 
 type DataSource struct {
@@ -498,7 +498,7 @@ func UpsertByMap(tableName string, insertMap map[string]any, ds DataSource) (int
 	if len(insertMap) == 0 {
 		return 0, nil
 	}
-	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap).Update(nmap.Keys(insertMap))
+	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap).Update(nutil.Keys(insertMap))
 	return UpsertByOrm(orm, ds)
 }
 
@@ -550,7 +550,7 @@ func UpsertsByMap(tableName string, insertMap []map[string]any, ds DataSource) (
 	if len(insertMap) == 0 {
 		return []int64{}, nil
 	}
-	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap...).Update(nmap.Keys(insertMap[0]))
+	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap...).Update(nutil.Keys(insertMap[0]))
 	return UpsertsByOrm(orm, ds)
 }
 func UpsertsByOrm(orm *nsql.UpsertOrm, ds DataSource) ([]int64, error) {
@@ -705,12 +705,12 @@ func forEachField(structType reflect.Type) map[string]string {
 }
 
 func prepareConvert(sqlStr, driverName string) string {
-	if driverName == constant.DRIVER_NAME_MYSQL {
-		return strings.ReplaceAll(sqlStr, constant.PLACE_HOLDER_GO, "?")
+	if driverName == driver.DRIVER_NAME_MYSQL {
+		return strings.ReplaceAll(sqlStr, driver.PLACE_HOLDER_GO, "?")
 	}
 	n := 1
-	for strings.Index(sqlStr, constant.PLACE_HOLDER_GO) > 0 {
-		sqlStr = strings.Replace(sqlStr, constant.PLACE_HOLDER_GO, fmt.Sprintf("$%v", n), 1)
+	for strings.Index(sqlStr, driver.PLACE_HOLDER_GO) > 0 {
+		sqlStr = strings.Replace(sqlStr, driver.PLACE_HOLDER_GO, fmt.Sprintf("$%v", n), 1)
 		n = n + 1
 	}
 	return sqlStr

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-lazyer/norm/constant"
+	"github.com/go-lazyer/norm/driver"
 	"github.com/go-lazyer/norm/nsql"
 	// _ "github.com/go-sql-driver/mysql"
 )
@@ -18,7 +18,7 @@ func GetDataSource() (DataSource, error) {
 	dbname := "north"
 	connStr := fmt.Sprintf("%s:%s@(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", username, password, host, port, dbname)
 	// 创建数据库连接
-	return Open(constant.DRIVER_NAME_MYSQL, connStr, Config{MaxOpenConns: 10, MaxIdleConns: 10})
+	return Open(driver.DRIVER_NAME_MYSQL, connStr, Config{MaxOpenConns: 10, MaxIdleConns: 10})
 }
 
 func TestCount(t *testing.T) {
