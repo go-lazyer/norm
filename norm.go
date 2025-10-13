@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-lazyer/norm/driver"
 	"github.com/go-lazyer/norm/nsql"
-	"github.com/go-lazyer/norm/nutil"
 )
 
 type DataSource struct {
@@ -498,7 +497,7 @@ func UpsertByMap(tableName string, insertMap map[string]any, ds DataSource) (int
 	if len(insertMap) == 0 {
 		return 0, nil
 	}
-	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap).Update(nutil.Keys(insertMap))
+	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap).Update(nsql.MapKeys(insertMap))
 	return UpsertByOrm(orm, ds)
 }
 
@@ -550,7 +549,7 @@ func UpsertsByMap(tableName string, insertMap []map[string]any, ds DataSource) (
 	if len(insertMap) == 0 {
 		return []int64{}, nil
 	}
-	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap...).Update(nutil.Keys(insertMap[0]))
+	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap...).Update(nsql.MapKeys(insertMap[0]))
 	return UpsertsByOrm(orm, ds)
 }
 func UpsertsByOrm(orm *nsql.UpsertOrm, ds DataSource) ([]int64, error) {
@@ -613,6 +612,23 @@ func UpsertsBySql(sqlStr string, params [][]any, ds DataSource) ([]int64, error)
 		ids = append(ids, id)
 	}
 	return ids, err
+}
+
+func ExecBySql(sqlStr string, ds DataSource) (int64, error) {
+
+	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "duplicate key") {
+		return 0, errors.New("must be a upsert sql")
+	}
+
+	if ds.Db == nil {
+		return 0, errors.New("db and tx not allowed to be all nil,need to instantiate yourself")
+	}
+
+	ret, err := ds.Db.Exec(sqlStr)
+	if err != nil {
+		return 0, err
+	}
+	return ret.RowsAffected()
 }
 
 // 把查询结果映射为实体

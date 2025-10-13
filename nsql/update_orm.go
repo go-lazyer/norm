@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/go-lazyer/norm/driver"
-	"github.com/go-lazyer/norm/nutil"
 )
 
 const (
@@ -194,7 +193,7 @@ func (s *UpdateOrm) ToPrepareSql() (string, [][]any, error) {
 	var sql bytes.Buffer
 	sql.WriteString("update " + s.tableName + " set ")
 
-	fields := nutil.Keys(s.update[0])
+	fields := MapKeys(s.update[0])
 
 	for i, update := range s.update {
 		for n, field := range fields {

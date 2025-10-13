@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/go-lazyer/norm/driver"
-	"github.com/go-lazyer/norm/nutil"
 )
 
 type BaseQuery interface {
@@ -65,7 +64,7 @@ func (q *BetweenQuery) Source(table string, prepare bool) (string, []any, error)
 	if prepare {
 		return fmt.Sprintf("%s.%s between %s and %s", table, q.field, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
 	}
-	if nutil.IsNumeric(q.firstValue) {
+	if isNumeric(q.firstValue) {
 		return fmt.Sprintf("%s.%s between %v and %v", table, q.field, q.firstValue, q.secondValue), param, nil
 	} else {
 		return fmt.Sprintf("%s.%s between '%v' and '%v' ", table, q.field, q.firstValue, q.secondValue), param, nil
@@ -87,7 +86,7 @@ func (q *NotBetweenQuery) Source(table string, prepare bool) (string, []any, err
 	if prepare {
 		return fmt.Sprintf("%s.%s not between %s and %s", table, q.field, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
 	}
-	if nutil.IsNumeric(q.firstValue) {
+	if isNumeric(q.firstValue) {
 		return fmt.Sprintf("%s.%s not between %v and %v", table, q.field, q.firstValue, q.secondValue), param, nil
 	} else {
 		return fmt.Sprintf("%s.%s not between '%v' and '%v' ", table, q.field, q.firstValue, q.secondValue), param, nil
@@ -114,7 +113,7 @@ func (q *EqualQuery) Source(table string, prepare bool) (string, []any, error) {
 	if prepare {
 		return fmt.Sprintf("%s.%s = %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s = %v", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s = '%v'", table, q.field, q.value), []any{q.value}, nil
@@ -134,7 +133,7 @@ func (q *NotEqualQuery) Source(table string, prepare bool) (string, []any, error
 	if prepare {
 		return fmt.Sprintf("%s.%s != %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s != %v", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s != '%v'", table, q.field, q.value), []any{q.value}, nil
@@ -162,7 +161,7 @@ func (q *InQuery[T]) Source(table string, prepare bool) (string, []any, error) {
 		}
 		if prepare {
 			sql.WriteString(fmt.Sprintf(" %s", driver.PLACE_HOLDER_GO))
-		} else if nutil.IsNumeric(v) {
+		} else if isNumeric(v) {
 			sql.WriteString(fmt.Sprintf(" %v ", v))
 		} else {
 			sql.WriteString(fmt.Sprintf(" '%v' ", v))
@@ -197,7 +196,7 @@ func (q *NotInQuery[T]) Source(table string, prepare bool) (string, []any, error
 		}
 		if prepare {
 			sql.WriteString(fmt.Sprintf(" %s", driver.PLACE_HOLDER_GO))
-		} else if nutil.IsNumeric(q.value) {
+		} else if isNumeric(q.value) {
 			sql.WriteString(fmt.Sprintf(" %v ", v))
 		} else {
 			sql.WriteString(fmt.Sprintf(" '%v' ", v))
@@ -226,7 +225,7 @@ func (q *LikeQuery) Source(table string, prepare bool) (string, []any, error) {
 	if prepare {
 		return fmt.Sprintf("%s.%s like %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s like '%v'", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s like '%v'", table, q.field, q.value), []any{q.value}, nil
@@ -246,7 +245,7 @@ func (q *NotLikeQuery) Source(table string, prepare bool) (string, []any, error)
 	if prepare {
 		return fmt.Sprintf("%s.%s not like %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s not like %v", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s not like '%v'", table, q.field, q.value), []any{q.value}, nil
@@ -266,7 +265,7 @@ func (q *GreaterThanQuery) Source(table string, prepare bool) (string, []any, er
 	if prepare {
 		return fmt.Sprintf("%s.%s > %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s > %v", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s > '%v'", table, q.field, q.value), []any{q.value}, nil
@@ -286,7 +285,7 @@ func (q *GreaterThanOrEqualQuery) Source(table string, prepare bool) (string, []
 	if prepare {
 		return fmt.Sprintf("%s.%s >= %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s >= %v", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s >= '%v'", table, q.field, q.value), []any{q.value}, nil
@@ -306,7 +305,7 @@ func (q *LessThanQuery) Source(table string, prepare bool) (string, []any, error
 	if prepare {
 		return fmt.Sprintf("%s.%s < %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s < %v", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s < '%v'", table, q.field, q.value), []any{q.value}, nil
@@ -326,7 +325,7 @@ func (q *LessThanOrEqualQuery) Source(table string, prepare bool) (string, []any
 	if prepare {
 		return fmt.Sprintf("%s.%s <= %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
-	if nutil.IsNumeric(q.value) {
+	if isNumeric(q.value) {
 		return fmt.Sprintf("%s.%s <= %v", table, q.field, q.value), []any{q.value}, nil
 	} else {
 		return fmt.Sprintf("%s.%s <= '%v'", table, q.field, q.value), []any{q.value}, nil

@@ -1,7 +1,7 @@
-package nutil
+package nsql
 
-// IsNumeric 检查一个值是否为数字类型
-func IsNumeric(inter any) bool {
+// isNumeric 检查一个值是否为数字类型
+func isNumeric(inter any) bool {
 	if inter == nil {
 		return false
 	}
@@ -23,4 +23,11 @@ func IsNumeric(inter any) bool {
 	default:
 		return false
 	}
+}
+func MapKeys[K comparable, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

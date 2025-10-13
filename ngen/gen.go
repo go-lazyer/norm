@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-lazyer/norm/driver"
-	"github.com/go-lazyer/norm/nutil"
 )
 
 type Generator struct {
@@ -202,8 +201,8 @@ func getFields(tableName, driverName string, db *sql.DB) ([]Field, []Field, erro
 		if err != nil {
 			panic(err)
 		}
-		field.FieldName = nutil.ToUpperCamelCase(field.ColumnName)
-		field.ColumnNameLowerCamel = nutil.ToLowerCamelCase(field.ColumnName)
+		field.FieldName = stringToUpperCamelCase(field.ColumnName)
+		field.ColumnNameLowerCamel = stringToLowerCamelCase(field.ColumnName)
 		field.ColumnNameUpper = strings.ToUpper(field.ColumnName)
 		field.FieldType = dbType[field.ColumnType].baseType
 		field.FieldTypeDefault = dbType[field.ColumnType].defaultValue
@@ -256,8 +255,8 @@ func (gen *Generator) Gen(modules []Module) error {
 		module.CreateTime = time.Now().Format("2006-01:02 15:04:05.006")
 		module.Fields = fields
 		module.PrimaryKeyFields = primaryKeyFields
-		module.TableNameUpperCamel = nutil.ToUpperCamelCase(tableName)
-		module.TableNameLowerCamel = nutil.ToLowerCamelCase(tableName)
+		module.TableNameUpperCamel = stringToUpperCamelCase(tableName)
+		module.TableNameLowerCamel = stringToLowerCamelCase(tableName)
 		urls := strings.Split(module.ModulePath, gen.project)
 
 		if module.ModelPackageName == "" {
@@ -299,7 +298,7 @@ func (gen *Generator) Gen(modules []Module) error {
 		module.ControllerFilePath = module.ModulePath + "/" + module.ControllerPackageName
 
 		genFile(&module, module.ModelPackageName)
-		genFile(&module, "field")
+		genFile(&module, "column")
 		genFile(&module, module.DaoPackageName)
 
 		if module.Extend {
@@ -331,29 +330,29 @@ func genFile(table *Module, packageName string) {
 		templateStr = getModelTemplate()
 		filePath = table.ModelFilePath
 		file = filePath + "/" + table.ModelFileName
-	case "field":
-		templateStr = getFieldTemplate()
+	case "column":
+		templateStr = getColumnTemplate()
 		filePath = table.ModelFilePath
-		file = filePath + "/" + table.TableName + "_field.go"
+		file = filePath + "/" + table.TableName + "_column.go"
 	case "extend":
 		templateStr = getExtendTemplate()
 		filePath = table.ExtendFilePath
 		file = filePath + "/" + table.ExtendFileName
-		if nutil.IsExist(file) { //view 不覆盖
+		if fileIsExist(file) { //view 不覆盖
 			return
 		}
 	case "view":
 		templateStr = getViewTemplate()
 		filePath = table.ViewFilePath
 		file = filePath + "/" + table.ViewFileName
-		if nutil.IsExist(file) { //view 不覆盖
+		if fileIsExist(file) { //view 不覆盖
 			return
 		}
 	case "param":
 		templateStr = getParamTemplate()
 		filePath = table.ParamFilePath
 		file = filePath + "/" + table.ParamFileName
-		if nutil.IsExist(file) { //param 不覆盖
+		if fileIsExist(file) { //param 不覆盖
 			return
 		}
 	case "dao":
@@ -364,14 +363,14 @@ func genFile(table *Module, packageName string) {
 		templateStr = getServiceTemplate()
 		filePath = table.ServiceFilePath
 		file = filePath + "/" + table.ServiceFileName
-		if nutil.IsExist(file) { //service 不覆盖
+		if fileIsExist(file) { //service 不覆盖
 			return
 		}
 	case "controller":
 		templateStr = getController()
 		filePath = table.ControllerFilePath
 		file = filePath + "/" + table.ControllerFileName
-		if nutil.IsExist(file) { //controller 不覆盖
+		if fileIsExist(file) { //controller 不覆盖
 			return
 		}
 	}
@@ -382,7 +381,7 @@ func genFile(table *Module, packageName string) {
 		return
 	}
 	// 第二步，创建文件目录
-	err = nutil.CreateDir(filePath)
+	err = createDir(filePath)
 	if err != nil {
 		fmt.Printf("create path:%v err", filePath)
 		return
@@ -428,7 +427,7 @@ func getModelTemplate() string {
 		return view
 	}`
 }
-func getFieldTemplate() string {
+func getColumnTemplate() string {
 	return `package model
 	const (
 		{{range $field := .Fields}}
@@ -436,11 +435,15 @@ func getFieldTemplate() string {
 		{{end}}
 		TABLE_NAME  = "{{ .TableName }}" // 表名
 	)
-	var fields = []string{
+	var columns = []string{
 		{{range $field := .Fields}} {{- .ColumnNameUpper -}},{{end}}
 	}
-	func GetFields() []string {
-		return append([]string(nil), fields...) // 返回副本
+	var columnMap = map[string]bool{
+		{{range $field := .Fields}} {{- .ColumnNameUpper -}}:true,
+		{{end}}
+	}
+	func GetColumns() []string {
+		return append([]string(nil), columns...) // 返回副本
 	}`
 }
 func getExtendTemplate() string {
@@ -523,7 +526,7 @@ func getDaoTemplate() string {
 	}
 
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
-	func QuerySingleById({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}) (model.{{.TableNameUpperCamel}}Model, error) {
+	func QuerySingleByPkey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}) (model.{{.TableNameUpperCamel}}Model, error) {
 		ds, err := database.DataSource()
 		if err != nil {
 			return model.{{.TableNameUpperCamel}}Model{}, err
@@ -581,7 +584,7 @@ func getDaoTemplate() string {
 	
 	{{if eq (len .PrimaryKeyFields) 1}} 
 
-	func QueryByIds(id []{{(index .PrimaryKeyFields 0).FieldType}}) ([]model.{{.TableNameUpperCamel}}Model, error) {
+	func QueryByPkeys(id []{{(index .PrimaryKeyFields 0).FieldType}}) ([]model.{{.TableNameUpperCamel}}Model, error) {
 		ds, err := database.DataSource()
 		if err != nil {
 			return nil, err
@@ -595,8 +598,8 @@ func getDaoTemplate() string {
 	}
 
 
-	func QueryMapByIds(ids []{{(index .PrimaryKeyFields 0).FieldType}}) (map[{{(index .PrimaryKeyFields 0).FieldType}}]model.{{.TableNameUpperCamel}}Model, error) {
-		ms, err := QueryByIds(ids)
+	func QueryMapByPkeys(ids []{{(index .PrimaryKeyFields 0).FieldType}}) (map[{{(index .PrimaryKeyFields 0).FieldType}}]model.{{.TableNameUpperCamel}}Model, error) {
+		ms, err := QueryByPkeys(ids)
 		if err != nil {
 			return nil, err
 		}
@@ -740,7 +743,7 @@ func getDaoTemplate() string {
 		return norm.DeleteByOrm(orm,ds)
 	}
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
-	func DeleteById({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}, tx... *sql.Tx) (int64, error) {
+	func DeleteByPkey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}, tx... *sql.Tx) (int64, error) {
 		ds, err := database.DataSource()
 		if err != nil {
 			return 0, err
@@ -758,7 +761,7 @@ func getDaoTemplate() string {
 	}
 	{{ end -}}
 	{{ if eq (len .PrimaryKeyFields) 1 -}}
-	func DeleteByIds(ids []any, tx... *sql.Tx) (int64, error) {
+	func DeleteByPkeys(ids []any, tx... *sql.Tx) (int64, error) {
 		ds, err := database.DataSource()
 		if err != nil {
 			return 0, err
@@ -789,8 +792,8 @@ func getServiceTemplate() string {
 	)
 
 	{{ if gt (len .PrimaryKeyFields) 0 -}} 
-	func QuerySingleByPrimaryKey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}) (model.{{.TableNameUpperCamel}}Model, error) {
-		{{.TableNameLowerCamel}}, err := dao.QuerySingleByPrimaryKey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }}   {{end}})
+	func QuerySingleByPkey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}) (model.{{.TableNameUpperCamel}}Model, error) {
+		{{.TableNameLowerCamel}}, err := dao.QuerySingleByPkey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }}   {{end}})
 		if err != nil {
 			return model.{{.TableNameUpperCamel}}Model{},err
 		}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/go-lazyer/norm/driver"
-	"github.com/go-lazyer/norm/nutil"
 )
 
 type InsertOrm struct {
@@ -39,7 +38,7 @@ func (s *InsertOrm) ToSql(prepare bool) (string, []any, error) {
 	sql.WriteString("(")
 	//把所有要修改的字段提取出来
 
-	fields := nutil.Keys(s.insert[0])
+	fields := MapKeys(s.insert[0])
 
 	for n, field := range fields {
 		if n != 0 {
@@ -85,7 +84,7 @@ func (s *InsertOrm) ToPrepareSql() (string, [][]any, error) {
 	sql.WriteString("(")
 	//把所有要修改的字段提取出来
 
-	fields := nutil.Keys(s.insert[0])
+	fields := MapKeys(s.insert[0])
 
 	var valuesSql bytes.Buffer
 	for n, field := range fields {
