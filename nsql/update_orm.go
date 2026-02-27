@@ -88,7 +88,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 			if n != 0 {
 				sql.WriteString(",")
 			}
-			sql.WriteString(fmt.Sprintf("%v = CASE ", field))
+			sql.WriteString(fmt.Sprintf("`%v` = CASE ", field))
 			for _, setMap := range s.update {
 				condition, ok := setMap[CONDITION]
 				if !ok {
@@ -128,9 +128,9 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 				sql.WriteString(",")
 			}
 			if prepare {
-				sql.WriteString(fmt.Sprintf("%v=%s", name, driver.PLACE_HOLDER_GO))
+				sql.WriteString(fmt.Sprintf("`%v`=%s", name, driver.PLACE_HOLDER_GO))
 			} else {
-				sql.WriteString(fmt.Sprintf("%v='%v'", name, value))
+				sql.WriteString(fmt.Sprintf("`%v`='%v'", name, value))
 			}
 			params = append(params, value)
 			n++

@@ -24,10 +24,11 @@ func NewNullQueryWithTable(table, field string) *NullQuery {
 }
 
 func (q *NullQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.table != "" {
-		table = q.table
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
 	}
-	return table + "." + q.field + " is null", nil, nil
+	return fieldStr + " is null", nil, nil
 }
 
 type NotNullQuery struct {
@@ -43,10 +44,11 @@ func NewNotNullQueryWithTable(table, field string) *NotNullQuery {
 }
 
 func (q *NotNullQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.table != "" {
-		table = q.table
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
 	}
-	return table + "." + q.field + " is not null", nil, nil
+	return fieldStr + " is not null", nil, nil
 }
 
 type BetweenQuery struct {
@@ -61,13 +63,18 @@ func NewBetweenQuery(field string, firstValue any, secondValue any) *BetweenQuer
 
 func (q *BetweenQuery) Source(table string, prepare bool) (string, []any, error) {
 	param := []any{q.firstValue, q.secondValue}
+
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s between %s and %s", table, q.field, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
+		return fmt.Sprintf("%s between %s and %s", fieldStr, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
 	}
 	if isNumeric(q.firstValue) {
-		return fmt.Sprintf("%s.%s between %v and %v", table, q.field, q.firstValue, q.secondValue), param, nil
+		return fmt.Sprintf("%s between %v and %v", fieldStr, q.firstValue, q.secondValue), param, nil
 	} else {
-		return fmt.Sprintf("%s.%s between '%v' and '%v' ", table, q.field, q.firstValue, q.secondValue), param, nil
+		return fmt.Sprintf("%s between '%v' and '%v' ", fieldStr, q.firstValue, q.secondValue), param, nil
 	}
 }
 
@@ -83,13 +90,17 @@ func NewNotBetweenQuery(field string, firstValue any, secondValue any) *NotBetwe
 
 func (q *NotBetweenQuery) Source(table string, prepare bool) (string, []any, error) {
 	param := []any{q.firstValue, q.secondValue}
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s not between %s and %s", table, q.field, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
+		return fmt.Sprintf("%s not between %s and %s", fieldStr, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
 	}
 	if isNumeric(q.firstValue) {
-		return fmt.Sprintf("%s.%s not between %v and %v", table, q.field, q.firstValue, q.secondValue), param, nil
+		return fmt.Sprintf("%s not between %v and %v", fieldStr, q.firstValue, q.secondValue), param, nil
 	} else {
-		return fmt.Sprintf("%s.%s not between '%v' and '%v' ", table, q.field, q.firstValue, q.secondValue), param, nil
+		return fmt.Sprintf("%s not between '%v' and '%v' ", fieldStr, q.firstValue, q.secondValue), param, nil
 	}
 }
 
@@ -107,16 +118,17 @@ func NewEqualQueryWithTable(table, field string, value any) *EqualQuery {
 }
 
 func (q *EqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.table != "" {
-		table = q.table
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
 	}
 	if prepare {
-		return fmt.Sprintf("%s.%s = %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s = %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s = %v", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s = %v", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s = '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s = '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -130,13 +142,17 @@ func NewNotEqualQuery(field string, value any) *NotEqualQuery {
 }
 
 func (q *NotEqualQuery) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s != %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s != %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s != %v", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s != %v", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s != '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s != '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -153,8 +169,12 @@ func NewInQuery[T comparable](field string, values []T) *InQuery[T] {
 	}
 }
 func (q *InQuery[T]) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	var sql bytes.Buffer
-	sql.WriteString(table + "." + q.field + " in (")
+	sql.WriteString(fieldStr + " in (")
 	for k, v := range q.value {
 		if k != 0 {
 			sql.WriteString(" ,")
@@ -188,8 +208,13 @@ func NewNotInQuery[T comparable](field string, value []T) *NotInQuery[T] {
 }
 
 func (q *NotInQuery[T]) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
+
 	var sql bytes.Buffer
-	sql.WriteString(table + "." + q.field + " not in (")
+	sql.WriteString(fieldStr + " not in (")
 	for k, v := range q.value {
 		if k != 0 {
 			sql.WriteString(" ,")
@@ -222,13 +247,17 @@ func NewLikeQuery(field string, value any) *LikeQuery {
 }
 
 func (q *LikeQuery) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s like %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s like %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s like '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s like '%v'", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s like '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s like '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -242,13 +271,17 @@ func NewNotLikeQuery(field string, value any) *NotLikeQuery {
 }
 
 func (q *NotLikeQuery) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s not like %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s not like %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s not like %v", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s not like %v", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s not like '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s not like '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -262,13 +295,17 @@ func NewGreaterThanQuery(field string, value any) *GreaterThanQuery {
 }
 
 func (q *GreaterThanQuery) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s > %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s > %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s > %v", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s > %v", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s > '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s > '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -282,13 +319,17 @@ func NewGreaterThanOrEqualQuery(field string, value any) *GreaterThanOrEqualQuer
 }
 
 func (q *GreaterThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s >= %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s >= %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s >= %v", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s >= %v", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s >= '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s >= '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -302,13 +343,17 @@ func NewLessThanQuery(field string, value any) *LessThanQuery {
 }
 
 func (q *LessThanQuery) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s < %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s < %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s < %v", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s < %v", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s < '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s < '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -322,13 +367,17 @@ func NewLessThanOrEqualQuery(field string, value any) *LessThanOrEqualQuery {
 }
 
 func (q *LessThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
+	fieldStr := q.field
+	if table != "" {
+		fieldStr = table + "." + q.field
+	}
 	if prepare {
-		return fmt.Sprintf("%s.%s <= %s", table, q.field, driver.PLACE_HOLDER_GO), []any{q.value}, nil
+		return fmt.Sprintf("%s <= %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
 	}
 	if isNumeric(q.value) {
-		return fmt.Sprintf("%s.%s <= %v", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s <= %v", fieldStr, q.value), []any{q.value}, nil
 	} else {
-		return fmt.Sprintf("%s.%s <= '%v'", table, q.field, q.value), []any{q.value}, nil
+		return fmt.Sprintf("%s <= '%v'", fieldStr, q.value), []any{q.value}, nil
 	}
 }
 
@@ -344,11 +393,20 @@ func NewFieldEqualQuery(firstTable, firstField, secondTable, secondField string)
 }
 
 func (q *FieldEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.firstTable != "" && q.secondTable != "" {
-		return fmt.Sprintf("%s.%s = %s.%s", q.firstTable, q.firstField, q.secondTable, q.secondField), []any{}, nil
-	} else {
-		return fmt.Sprintf("%s.%s = %s.%s", table, q.firstField, table, q.secondField), []any{}, nil
+	firstFieldStr := q.firstField
+	if q.firstTable != "" {
+		firstFieldStr = q.firstTable + "." + q.firstField
+	} else if table != "" {
+		firstFieldStr = table + "." + q.firstField
 	}
+
+	secondFieldStr := q.secondField
+	if q.secondTable != "" {
+		secondFieldStr = q.secondTable + "." + q.secondField
+	} else if table != "" {
+		secondFieldStr = table + "." + q.secondField
+	}
+	return fmt.Sprintf("%s = %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
 
 type FieldNotEqualQuery struct {
@@ -363,11 +421,20 @@ func NewFieldNotEqualQuery(firstTable, firstField, secondTable, secondField stri
 }
 
 func (q *FieldNotEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.firstTable != "" && q.secondTable != "" {
-		return fmt.Sprintf("%s.%s != %s.%s", q.firstTable, q.firstField, q.secondTable, q.secondField), []any{}, nil
-	} else {
-		return fmt.Sprintf("%s.%s != %s.%s", table, q.firstField, table, q.secondField), []any{}, nil
+	firstFieldStr := q.firstField
+	if q.firstTable != "" {
+		firstFieldStr = q.firstTable + "." + q.firstField
+	} else if table != "" {
+		firstFieldStr = table + "." + q.firstField
 	}
+
+	secondFieldStr := q.secondField
+	if q.secondTable != "" {
+		secondFieldStr = q.secondTable + "." + q.secondField
+	} else if table != "" {
+		secondFieldStr = table + "." + q.secondField
+	}
+	return fmt.Sprintf("%s != %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
 
 type FieldGreaterThanQuery struct {
@@ -382,11 +449,21 @@ func NewFieldGreaterThanQuery(firstTable, firstField, secondTable, secondField s
 }
 
 func (q *FieldGreaterThanQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.firstTable != "" && q.secondTable != "" {
-		return fmt.Sprintf("%s.%s > %s.%s", q.firstTable, q.firstField, q.secondTable, q.secondField), []any{}, nil
-	} else {
-		return fmt.Sprintf("%s.%s > %s.%s", table, q.firstField, table, q.secondField), []any{}, nil
+	firstFieldStr := q.firstField
+	if q.firstTable != "" {
+		firstFieldStr = q.firstTable + "." + q.firstField
+	} else if table != "" {
+		firstFieldStr = table + "." + q.firstField
 	}
+
+	secondFieldStr := q.secondField
+	if q.secondTable != "" {
+		secondFieldStr = q.secondTable + "." + q.secondField
+	} else if table != "" {
+		secondFieldStr = table + "." + q.secondField
+	}
+
+	return fmt.Sprintf("%s > %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
 
 type FieldGreaterThanOrEqualQuery struct {
@@ -401,11 +478,21 @@ func NewFieldGreaterThanOrEqualQuery(firstTable, firstField, secondTable, second
 }
 
 func (q *FieldGreaterThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.firstTable != "" && q.secondTable != "" {
-		return fmt.Sprintf("%s.%s >= %s.%s", q.firstTable, q.firstField, q.secondTable, q.secondField), []any{}, nil
-	} else {
-		return fmt.Sprintf("%s.%s >= %s.%s", table, q.firstField, table, q.secondField), []any{}, nil
+	firstFieldStr := q.firstField
+	if q.firstTable != "" {
+		firstFieldStr = q.firstTable + "." + q.firstField
+	} else if table != "" {
+		firstFieldStr = table + "." + q.firstField
 	}
+
+	secondFieldStr := q.secondField
+	if q.secondTable != "" {
+		secondFieldStr = q.secondTable + "." + q.secondField
+	} else if table != "" {
+		secondFieldStr = table + "." + q.secondField
+	}
+
+	return fmt.Sprintf("%s >= %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
 
 type FieldLessThanQuery struct {
@@ -420,11 +507,21 @@ func NewFieldLessThanQuery(firstTable, firstField, secondTable, secondField stri
 }
 
 func (q *FieldLessThanQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.firstTable != "" && q.secondTable != "" {
-		return fmt.Sprintf("%s.%s < %s.%s", q.firstTable, q.firstField, q.secondTable, q.secondField), []any{}, nil
-	} else {
-		return fmt.Sprintf("%s.%s < %s.%s", table, q.firstField, table, q.secondField), []any{}, nil
+	firstFieldStr := q.firstField
+	if q.firstTable != "" {
+		firstFieldStr = q.firstTable + "." + q.firstField
+	} else if table != "" {
+		firstFieldStr = table + "." + q.firstField
 	}
+
+	secondFieldStr := q.secondField
+	if q.secondTable != "" {
+		secondFieldStr = q.secondTable + "." + q.secondField
+	} else if table != "" {
+		secondFieldStr = table + "." + q.secondField
+	}
+
+	return fmt.Sprintf("%s < %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
 
 type FieldLessThanOrEqualQuery struct {
@@ -439,11 +536,20 @@ func NewFieldLessThanOrEqualQuery(firstTable, firstField, secondTable, secondFie
 }
 
 func (q *FieldLessThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	if q.firstTable != "" && q.secondTable != "" {
-		return fmt.Sprintf("%s.%s <= %s.%s", q.firstTable, q.firstField, q.secondTable, q.secondField), []any{}, nil
-	} else {
-		return fmt.Sprintf("%s.%s <= %s.%s", table, q.firstField, table, q.secondField), []any{}, nil
+	firstFieldStr := q.firstField
+	if q.firstTable != "" {
+		firstFieldStr = q.firstTable + "." + q.firstField
+	} else if table != "" {
+		firstFieldStr = table + "." + q.firstField
 	}
+
+	secondFieldStr := q.secondField
+	if q.secondTable != "" {
+		secondFieldStr = q.secondTable + "." + q.secondField
+	} else if table != "" {
+		secondFieldStr = table + "." + q.secondField
+	}
+	return fmt.Sprintf("%s <= %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
 
 // field end

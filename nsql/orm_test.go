@@ -124,11 +124,12 @@ func TestGenerator_UpdateSql(t *testing.T) {
 	// update user set age=21,name="lazeyr" where id="10000"
 	query := NewEqualQuery("id", 1000)
 	set := map[string]any{
-		"age":  21,
-		"name": "lazyer",
+		"age":    21,
+		"name":   "lazyer",
+		"delete": 1,
 	}
 	gen := NewUpdateOrm().Table("user").Where(query).Update(set)
-	fmt.Println(gen.ToSql(false))
+	fmt.Println(gen.ToSql(true))
 }
 
 func TestGenerator_UpdatesSql(t *testing.T) {

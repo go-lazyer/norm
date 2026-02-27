@@ -94,9 +94,9 @@ func (s *SelectOrm) ToSql(prepare bool) (string, []any, error) {
 	if s.tableName == "" {
 		return "", nil, errors.New("tableName cannot be empty")
 	}
-	table := s.tableName
-	if s.tableAlias != "" {
-		table = s.tableAlias
+	tableAlias := s.tableAlias
+	if len(s.joins) == 0 { //单表查询，不需要表别名
+		tableAlias = ""
 	}
 
 	params := make([]any, 0)
@@ -109,8 +109,8 @@ func (s *SelectOrm) ToSql(prepare bool) (string, []any, error) {
 	}
 	sql.WriteString(" from  " + s.tableName + "")
 
-	if s.tableAlias != "" {
-		sql.WriteString(" " + s.tableAlias + " ")
+	if tableAlias != "" {
+		sql.WriteString(" " + tableAlias + " ")
 	}
 
 	for _, join := range s.joins {
@@ -139,7 +139,7 @@ func (s *SelectOrm) ToSql(prepare bool) (string, []any, error) {
 		if query == nil {
 			continue
 		}
-		source, param, err := query.Source(table, prepare)
+		source, param, err := query.Source(tableAlias, prepare)
 		if err != nil {
 			return "", nil, err
 		}
