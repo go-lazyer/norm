@@ -24,9 +24,9 @@ func NewNullQueryWithTable(table, field string) *NullQuery {
 }
 
 func (q *NullQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	return fieldStr + " is null", nil, nil
 }
@@ -44,9 +44,9 @@ func NewNotNullQueryWithTable(table, field string) *NotNullQuery {
 }
 
 func (q *NotNullQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	return fieldStr + " is not null", nil, nil
 }
@@ -64,9 +64,9 @@ func NewBetweenQuery(field string, firstValue any, secondValue any) *BetweenQuer
 func (q *BetweenQuery) Source(table string, prepare bool) (string, []any, error) {
 	param := []any{q.firstValue, q.secondValue}
 
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s between %s and %s", fieldStr, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
@@ -90,9 +90,9 @@ func NewNotBetweenQuery(field string, firstValue any, secondValue any) *NotBetwe
 
 func (q *NotBetweenQuery) Source(table string, prepare bool) (string, []any, error) {
 	param := []any{q.firstValue, q.secondValue}
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s not between %s and %s", fieldStr, driver.PLACE_HOLDER_GO, driver.PLACE_HOLDER_GO), param, nil
@@ -118,9 +118,9 @@ func NewEqualQueryWithTable(table, field string, value any) *EqualQuery {
 }
 
 func (q *EqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s = %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -142,9 +142,9 @@ func NewNotEqualQuery(field string, value any) *NotEqualQuery {
 }
 
 func (q *NotEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s != %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -169,9 +169,9 @@ func NewInQuery[T comparable](field string, values []T) *InQuery[T] {
 	}
 }
 func (q *InQuery[T]) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	var sql bytes.Buffer
 	sql.WriteString(fieldStr + " in (")
@@ -208,9 +208,9 @@ func NewNotInQuery[T comparable](field string, value []T) *NotInQuery[T] {
 }
 
 func (q *NotInQuery[T]) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 
 	var sql bytes.Buffer
@@ -247,9 +247,9 @@ func NewLikeQuery(field string, value any) *LikeQuery {
 }
 
 func (q *LikeQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s like %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -271,9 +271,9 @@ func NewNotLikeQuery(field string, value any) *NotLikeQuery {
 }
 
 func (q *NotLikeQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s not like %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -295,9 +295,9 @@ func NewGreaterThanQuery(field string, value any) *GreaterThanQuery {
 }
 
 func (q *GreaterThanQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s > %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -319,9 +319,9 @@ func NewGreaterThanOrEqualQuery(field string, value any) *GreaterThanOrEqualQuer
 }
 
 func (q *GreaterThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s >= %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -343,9 +343,9 @@ func NewLessThanQuery(field string, value any) *LessThanQuery {
 }
 
 func (q *LessThanQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s < %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -367,9 +367,9 @@ func NewLessThanOrEqualQuery(field string, value any) *LessThanOrEqualQuery {
 }
 
 func (q *LessThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	fieldStr := q.field
+	fieldStr := "`" + q.field + "`"
 	if table != "" {
-		fieldStr = table + "." + q.field
+		fieldStr = table + "." + fieldStr
 	}
 	if prepare {
 		return fmt.Sprintf("%s <= %s", fieldStr, driver.PLACE_HOLDER_GO), []any{q.value}, nil
@@ -393,18 +393,18 @@ func NewFieldEqualQuery(firstTable, firstField, secondTable, secondField string)
 }
 
 func (q *FieldEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	firstFieldStr := q.firstField
+	firstFieldStr := "`" + q.firstField + "`"
 	if q.firstTable != "" {
-		firstFieldStr = q.firstTable + "." + q.firstField
+		firstFieldStr = q.firstTable + "." + firstFieldStr
 	} else if table != "" {
-		firstFieldStr = table + "." + q.firstField
+		firstFieldStr = table + "." + firstFieldStr
 	}
 
-	secondFieldStr := q.secondField
+	secondFieldStr := "`" + q.secondField + "`"
 	if q.secondTable != "" {
-		secondFieldStr = q.secondTable + "." + q.secondField
+		secondFieldStr = q.secondTable + "." + secondFieldStr
 	} else if table != "" {
-		secondFieldStr = table + "." + q.secondField
+		secondFieldStr = table + "." + secondFieldStr
 	}
 	return fmt.Sprintf("%s = %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
@@ -421,18 +421,18 @@ func NewFieldNotEqualQuery(firstTable, firstField, secondTable, secondField stri
 }
 
 func (q *FieldNotEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	firstFieldStr := q.firstField
+	firstFieldStr := "`" + q.firstField + "`"
 	if q.firstTable != "" {
-		firstFieldStr = q.firstTable + "." + q.firstField
+		firstFieldStr = q.firstTable + "." + firstFieldStr
 	} else if table != "" {
-		firstFieldStr = table + "." + q.firstField
+		firstFieldStr = table + "." + firstFieldStr
 	}
 
-	secondFieldStr := q.secondField
+	secondFieldStr := "`" + q.secondField + "`"
 	if q.secondTable != "" {
-		secondFieldStr = q.secondTable + "." + q.secondField
+		secondFieldStr = q.secondTable + "." + secondFieldStr
 	} else if table != "" {
-		secondFieldStr = table + "." + q.secondField
+		secondFieldStr = table + "." + secondFieldStr
 	}
 	return fmt.Sprintf("%s != %s", firstFieldStr, secondFieldStr), []any{}, nil
 }
@@ -449,18 +449,18 @@ func NewFieldGreaterThanQuery(firstTable, firstField, secondTable, secondField s
 }
 
 func (q *FieldGreaterThanQuery) Source(table string, prepare bool) (string, []any, error) {
-	firstFieldStr := q.firstField
+	firstFieldStr := "`" + q.firstField + "`"
 	if q.firstTable != "" {
-		firstFieldStr = q.firstTable + "." + q.firstField
+		firstFieldStr = q.firstTable + "." + firstFieldStr
 	} else if table != "" {
-		firstFieldStr = table + "." + q.firstField
+		firstFieldStr = table + "." + firstFieldStr
 	}
 
-	secondFieldStr := q.secondField
+	secondFieldStr := "`" + q.secondField + "`"
 	if q.secondTable != "" {
-		secondFieldStr = q.secondTable + "." + q.secondField
+		secondFieldStr = q.secondTable + "." + secondFieldStr
 	} else if table != "" {
-		secondFieldStr = table + "." + q.secondField
+		secondFieldStr = table + "." + secondFieldStr
 	}
 
 	return fmt.Sprintf("%s > %s", firstFieldStr, secondFieldStr), []any{}, nil
@@ -478,18 +478,18 @@ func NewFieldGreaterThanOrEqualQuery(firstTable, firstField, secondTable, second
 }
 
 func (q *FieldGreaterThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	firstFieldStr := q.firstField
+	firstFieldStr := "`" + q.firstField + "`"
 	if q.firstTable != "" {
-		firstFieldStr = q.firstTable + "." + q.firstField
+		firstFieldStr = q.firstTable + "." + firstFieldStr
 	} else if table != "" {
-		firstFieldStr = table + "." + q.firstField
+		firstFieldStr = table + "." + firstFieldStr
 	}
 
-	secondFieldStr := q.secondField
+	secondFieldStr := "`" + q.secondField + "`"
 	if q.secondTable != "" {
-		secondFieldStr = q.secondTable + "." + q.secondField
+		secondFieldStr = q.secondTable + "." + secondFieldStr
 	} else if table != "" {
-		secondFieldStr = table + "." + q.secondField
+		secondFieldStr = table + "." + secondFieldStr
 	}
 
 	return fmt.Sprintf("%s >= %s", firstFieldStr, secondFieldStr), []any{}, nil
@@ -507,18 +507,18 @@ func NewFieldLessThanQuery(firstTable, firstField, secondTable, secondField stri
 }
 
 func (q *FieldLessThanQuery) Source(table string, prepare bool) (string, []any, error) {
-	firstFieldStr := q.firstField
+	firstFieldStr := "`" + q.firstField + "`"
 	if q.firstTable != "" {
-		firstFieldStr = q.firstTable + "." + q.firstField
+		firstFieldStr = q.firstTable + "." + firstFieldStr
 	} else if table != "" {
-		firstFieldStr = table + "." + q.firstField
+		firstFieldStr = table + "." + firstFieldStr
 	}
 
-	secondFieldStr := q.secondField
+	secondFieldStr := "`" + q.secondField + "`"
 	if q.secondTable != "" {
-		secondFieldStr = q.secondTable + "." + q.secondField
+		secondFieldStr = q.secondTable + "." + secondFieldStr
 	} else if table != "" {
-		secondFieldStr = table + "." + q.secondField
+		secondFieldStr = table + "." + secondFieldStr
 	}
 
 	return fmt.Sprintf("%s < %s", firstFieldStr, secondFieldStr), []any{}, nil
@@ -536,18 +536,18 @@ func NewFieldLessThanOrEqualQuery(firstTable, firstField, secondTable, secondFie
 }
 
 func (q *FieldLessThanOrEqualQuery) Source(table string, prepare bool) (string, []any, error) {
-	firstFieldStr := q.firstField
+	firstFieldStr := "`" + q.firstField + "`"
 	if q.firstTable != "" {
-		firstFieldStr = q.firstTable + "." + q.firstField
+		firstFieldStr = q.firstTable + "." + firstFieldStr
 	} else if table != "" {
-		firstFieldStr = table + "." + q.firstField
+		firstFieldStr = table + "." + firstFieldStr
 	}
 
-	secondFieldStr := q.secondField
+	secondFieldStr := "`" + q.secondField + "`"
 	if q.secondTable != "" {
-		secondFieldStr = q.secondTable + "." + q.secondField
+		secondFieldStr = q.secondTable + "." + secondFieldStr
 	} else if table != "" {
-		secondFieldStr = table + "." + q.secondField
+		secondFieldStr = table + "." + secondFieldStr
 	}
 	return fmt.Sprintf("%s <= %s", firstFieldStr, secondFieldStr), []any{}, nil
 }

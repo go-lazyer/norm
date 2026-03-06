@@ -27,6 +27,7 @@ func NewSelectOrm() *SelectOrm {
 }
 func (s *SelectOrm) Table(tableName string) *SelectOrm {
 	s.tableName = tableName
+	s.tableAlias = tableName
 	return s
 }
 func (s *SelectOrm) Where(query ...BaseQuery) *SelectOrm {
