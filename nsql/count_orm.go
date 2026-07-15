@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+
+	"github.com/go-lazyer/norm/driver"
 )
 
 type CountOrm struct {
+	driverName string
 	groupBy    []string //分组字段
 	querys     []BaseQuery
 	joins      []*Join
@@ -16,7 +19,11 @@ type CountOrm struct {
 }
 
 func NewCountOrm() *CountOrm {
-	return &CountOrm{}
+	return &CountOrm{driverName: driver.DRIVER_NAME_MYSQL}
+}
+func (s *CountOrm) DriverName(driverName string) *CountOrm {
+	s.driverName = driverName
+	return s
 }
 func (s *CountOrm) Table(tableName string) *CountOrm {
 	s.tableName = tableName
@@ -71,6 +78,7 @@ func (s *CountOrm) ToSql(prepare bool) (string, []any, error) {
 	}
 
 	params := make([]any, 0)
+	phIdx := 1
 	var sql bytes.Buffer
 	sql.WriteString("select ")
 
@@ -94,14 +102,14 @@ func (s *CountOrm) ToSql(prepare bool) (string, []any, error) {
 			} else {
 				sql.WriteString(" or ")
 			}
-			source, param, _ := query.Source(join.tableName, prepare)
+			source, param, _ := query.Source(join.tableName, prepare, s.driverName, &phIdx)
 			sql.WriteString(" " + source + " ")
 			params = append(params, param...)
 		}
 	}
 
 	for n, query := range s.querys {
-		source, param, err := query.Source(tableAlias, prepare)
+		source, param, err := query.Source(tableAlias, prepare, s.driverName, &phIdx)
 		if err != nil {
 			return "", nil, err
 		}
@@ -115,67 +123,6 @@ func (s *CountOrm) ToSql(prepare bool) (string, []any, error) {
 		}
 		sql.WriteString(" " + source + " ")
 		params = append(params, param...)
-	}
-
-	return sql.String(), params, nil
-}
-
-func (s *CountOrm) ToPrepareSql() (string, [][]any, error) {
-	if s.tableName == "" {
-		return "", nil, errors.New("tableName cannot be empty")
-	}
-
-	table := s.tableName
-	if s.tableAlias != "" {
-		table = s.tableAlias
-	}
-
-	var sql bytes.Buffer
-	sql.WriteString("select ")
-
-	result := " count(*) count  "
-	if len(s.columns) > 0 {
-		result = s.columns[0]
-	}
-
-	sql.WriteString(result)
-	sql.WriteString(" from  " + s.tableName + "")
-
-	if s.tableAlias != "" {
-		sql.WriteString(" " + s.tableAlias + " ")
-	}
-	params := make([][]any, len(s.querys))
-	for _, join := range s.joins {
-		sql.WriteString(fmt.Sprintf(" %v %v on %v", join.joinType, join.tableName, join.condition))
-		for i, query := range join.querys {
-			if i == 0 {
-				sql.WriteString(" and ")
-			} else {
-				sql.WriteString(" or ")
-			}
-			source, p, _ := query.Source(join.tableName, true)
-			sql.WriteString(" " + source + " ")
-			for i, param := range params {
-				params[i] = append(param, p...)
-			}
-		}
-	}
-
-	for n, query := range s.querys {
-		source, p, err := query.Source(table, true)
-		if err != nil {
-			return "", nil, err
-		}
-		if source == "" {
-			continue
-		}
-		if n == 0 {
-			sql.WriteString(" where   ")
-		} else {
-			sql.WriteString(" or ")
-		}
-		sql.WriteString(" " + source + " ")
-		params[n] = append(params[n], p...)
 	}
 
 	return sql.String(), params, nil

@@ -9,16 +9,32 @@ import (
 )
 
 type InsertOrm struct {
-	insert    []map[string]any
-	tableName string
+	driverName string
+	insert     []map[string]any
+	tableName  string
+	primaryKey string
 }
 
 func NewInsertOrm() *InsertOrm {
-	return &InsertOrm{}
+	return &InsertOrm{driverName: driver.DRIVER_NAME_MYSQL}
+}
+func (s *InsertOrm) DriverName(driverName string) *InsertOrm {
+	s.driverName = driverName
+	return s
 }
 func (s *InsertOrm) Table(tableName string) *InsertOrm {
 	s.tableName = tableName
 	return s
+}
+func (s *InsertOrm) TableName() string {
+	return s.tableName
+}
+func (s *InsertOrm) PrimaryKey(primaryKey string) *InsertOrm {
+	s.primaryKey = primaryKey
+	return s
+}
+func (s *InsertOrm) PrimaryKeyName() string {
+	return s.primaryKey
 }
 func (s *InsertOrm) Insert(m ...map[string]any) *InsertOrm {
 	s.insert = m
@@ -33,6 +49,7 @@ func (s *InsertOrm) ToSql(prepare bool) (string, []any, error) {
 		return "", nil, errors.New("insert cannot be empty")
 	}
 	params := make([]any, 0)
+	phIdx := 1
 	var sql bytes.Buffer
 	sql.WriteString("insert into " + s.tableName + " ")
 	sql.WriteString("(")
@@ -59,7 +76,7 @@ func (s *InsertOrm) ToSql(prepare bool) (string, []any, error) {
 			}
 			params = append(params, maps[field])
 			if prepare {
-				sql.WriteString(fmt.Sprintf(" %s ", driver.PLACE_HOLDER_GO))
+				sql.WriteString(fmt.Sprintf(" %s ", nextPlaceholder(s.driverName, &phIdx)))
 			} else {
 				sql.WriteString(fmt.Sprintf(" '%v' ", maps[field]))
 			}
@@ -67,42 +84,10 @@ func (s *InsertOrm) ToSql(prepare bool) (string, []any, error) {
 		sql.WriteString(")")
 	}
 
-	return sql.String(), params, nil
-}
-
-func (s *InsertOrm) ToPrepareSql() (string, [][]any, error) {
-
-	if s.tableName == "" {
-		return "", nil, errors.New("tableName cannot be empty")
-	}
-	if len(s.insert) == 0 {
-		return "", nil, errors.New("insert cannot be empty")
-	}
-
-	var sql bytes.Buffer
-	sql.WriteString("insert into " + s.tableName + " ")
-	sql.WriteString("(")
-	//把所有要修改的字段提取出来
-
-	fields := MapKeys(s.insert[0])
-
-	var valuesSql bytes.Buffer
-	for n, field := range fields {
-		if n != 0 {
-			sql.WriteString(",")
-			valuesSql.WriteString(",")
+	if driver.IsPostgres(s.driverName) {
+		if s.primaryKey != "" {
+			sql.WriteString(" RETURNING \"" + s.primaryKey + "\"")
 		}
-		sql.WriteString(" " + field + " ")
-		valuesSql.WriteString(" " + driver.PLACE_HOLDER_GO + " ")
-	}
-	sql.WriteString(") values (" + valuesSql.String() + ")")
-	params := make([][]any, 0, len(s.insert))
-	for _, maps := range s.insert {
-		param := make([]any, 0)
-		for _, field := range fields {
-			param = append(param, maps[field])
-		}
-		params = append(params, param)
 	}
 
 	return sql.String(), params, nil

@@ -13,6 +13,7 @@ const (
 )
 
 type UpdateOrm struct {
+	driverName string
 	querys     []BaseQuery
 	update     []map[string]any
 	joins      []*Join
@@ -21,7 +22,11 @@ type UpdateOrm struct {
 }
 
 func NewUpdateOrm() *UpdateOrm {
-	return &UpdateOrm{}
+	return &UpdateOrm{driverName: driver.DRIVER_NAME_MYSQL}
+}
+func (s *UpdateOrm) DriverName(driverName string) *UpdateOrm {
+	s.driverName = driverName
+	return s
 }
 func (s *UpdateOrm) Table(tableName string) *UpdateOrm {
 	s.tableName = tableName
@@ -69,6 +74,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 	}
 
 	params := make([]any, 0)
+	phIdx := 1
 	var sql bytes.Buffer
 	sql.WriteString("update " + s.tableName + " set ")
 	n := 0
@@ -88,7 +94,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 			if n != 0 {
 				sql.WriteString(",")
 			}
-			sql.WriteString(fmt.Sprintf("`%v` = CASE ", field))
+			sql.WriteString(fmt.Sprintf("%s = CASE ", quoteField(s.driverName, field)))
 			for _, setMap := range s.update {
 				condition, ok := setMap[CONDITION]
 				if !ok {
@@ -105,14 +111,14 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 					continue
 				}
 
-				source, param, err := baseQuery.Source(s.tableName, prepare)
+				source, param, err := baseQuery.Source(s.tableName, prepare, s.driverName, &phIdx)
 				if err != nil {
 					return "", nil, err
 				}
 				params = append(params, param...)
 
 				if prepare {
-					sql.WriteString(fmt.Sprintf(" WHEN %v THEN %v", source, driver.PLACE_HOLDER_GO))
+					sql.WriteString(fmt.Sprintf(" WHEN %v THEN %v", source, nextPlaceholder(s.driverName, &phIdx)))
 				} else {
 					sql.WriteString(fmt.Sprintf(" WHEN %v THEN %v", source, v))
 				}
@@ -128,9 +134,9 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 				sql.WriteString(",")
 			}
 			if prepare {
-				sql.WriteString(fmt.Sprintf("`%v`=%s", name, driver.PLACE_HOLDER_GO))
+				sql.WriteString(fmt.Sprintf("%s=%s", quoteField(s.driverName, name), nextPlaceholder(s.driverName, &phIdx)))
 			} else {
-				sql.WriteString(fmt.Sprintf("`%v`='%v'", name, value))
+				sql.WriteString(fmt.Sprintf("%s='%v'", quoteField(s.driverName, name), value))
 			}
 			params = append(params, value)
 			n++
@@ -142,7 +148,7 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 		if query == nil {
 			continue
 		}
-		source, param, err := query.Source(table, prepare)
+		source, param, err := query.Source(table, prepare, s.driverName, &phIdx)
 		if err != nil {
 			return "", nil, err
 		}
@@ -156,92 +162,6 @@ func (s *UpdateOrm) ToSql(prepare bool) (string, []any, error) {
 		}
 		sql.WriteString(" " + source + " ")
 		params = append(params, param...)
-	}
-
-	return sql.String(), params, nil
-}
-
-// 用于批量更新，单独更新不建议使用
-// 生成updatePrepareSql 是orm 中的 update 和 querys 中len的关系为，一对多，多对一，或者n对n 只有这3种情况
-// 多个update 的长度和key必须一致
-// 多个querys 的长度和query必须一致
-
-func (s *UpdateOrm) ToPrepareSql() (string, [][]any, error) {
-
-	if s.tableName == "" {
-		return "", nil, errors.New("tableName  cannot be empty")
-	}
-
-	if len(s.update) == 0 {
-		return "", nil, errors.New("the update cannot be empty")
-	}
-	if len(s.querys) == 0 {
-		return "", nil, errors.New("the querys cannot be empty")
-	}
-
-	if len(s.update) > 1 && len(s.querys) > 1 && len(s.update) != len(s.querys) {
-		return "", nil, errors.New("the update and querys must be one to one or many to one")
-	}
-
-	table := s.tableName
-	if s.tableAlias != "" {
-		table = s.tableAlias
-	}
-
-	params := make([][]any, max(len(s.update), len(s.querys)))
-
-	var sql bytes.Buffer
-	sql.WriteString("update " + s.tableName + " set ")
-
-	fields := MapKeys(s.update[0])
-
-	for i, update := range s.update {
-		for n, field := range fields {
-			value, ok := update[field]
-			if !ok {
-				return "", nil, fmt.Errorf("missing value for field %s in update map. ", field)
-			}
-
-			if i == 0 { //多个update ，只把第一个拼写到sql 中
-				if n != 0 {
-					sql.WriteString(",")
-				}
-				sql.WriteString(fmt.Sprintf("%v=%s", field, driver.PLACE_HOLDER_GO))
-			}
-
-			if len(s.update) == 1 {
-				for i, param := range params {
-					params[i] = append(param, value)
-				}
-			} else {
-				params[i] = append(params[i], value)
-			}
-		}
-	}
-	// 添加查询
-	source0, _, _ := s.querys[0].Source(table, true)
-	for n, query := range s.querys { //forr 会自动判断 querys 不为空
-		if query == nil {
-			continue
-		}
-		source, p, err := query.Source(table, true)
-		if err != nil {
-			return "", nil, err
-		}
-		//querys中结构必须完全相同
-		if source == "" || source != source0 {
-			return "", nil, errors.New("the structure of query must be exactly the same")
-		}
-		if n == 0 {
-			sql.WriteString(" where   " + source + " ")
-		}
-		if len(s.querys) == 1 {
-			for i, param := range params {
-				params[i] = append(param, p...)
-			}
-		} else {
-			params[n] = append(params[n], p...)
-		}
 	}
 
 	return sql.String(), params, nil

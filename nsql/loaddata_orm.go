@@ -8,6 +8,7 @@ import (
 )
 
 type LoadDataOrm struct {
+	driverName          string
 	filePath            string
 	local               bool //是否是本地文件 默认false
 	tableName           string
@@ -22,6 +23,12 @@ type LoadDataOrm struct {
 func NewLoadDataOrm(filePath, tableName string) *LoadDataOrm {
 	return &LoadDataOrm{filePath: filePath, tableName: tableName}
 }
+
+func (s *LoadDataOrm) DriverName(driverName string) *LoadDataOrm {
+	s.driverName = driverName
+	return s
+}
+
 func (s *LoadDataOrm) Local(local bool) *LoadDataOrm {
 	s.local = local
 	return s

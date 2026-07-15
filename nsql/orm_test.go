@@ -196,21 +196,3 @@ func TestGenerator_UpsertsSql(t *testing.T) {
 	gen := NewUpsertOrm().Table("user").Insert(set, set1).Update(upMap)
 	fmt.Println(gen.ToSql(false))
 }
-func TestGenerator_PrepareUpsertSql(t *testing.T) {
-
-	set := map[string]any{
-		"id":   1,
-		"age":  21,
-		"name": "lazyer",
-	}
-	set1 := map[string]any{
-		"id":   2,
-		"age":  211,
-		"name": "lazyer1",
-	}
-
-	upMap := []string{"age", "name"}
-
-	gen := NewUpsertOrm().Table("user").Insert(set, set1).Update(upMap)
-	fmt.Println(gen.ToPrepareSql())
-}

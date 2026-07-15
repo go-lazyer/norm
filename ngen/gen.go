@@ -36,6 +36,7 @@ func (gen *Generator) Project(project string) *Generator {
 }
 
 type Module struct {
+	Project             string
 	TableName           string //表名
 	TableNameUpperCamel string //表名的大驼峰
 	TableNameLowerCamel string //表名的小驼峰
@@ -138,6 +139,7 @@ var dbType = map[string]goType{
 	"date":               {"time.Time", "sql.NullTime", "Time", "nil"},
 	"datetime":           {"time.Time", "sql.NullTime", "Time", "nil"},
 	"timestamp":          {"time.Time", "sql.NullTime", "Time", "nil"},
+	"_timestamp":         {"[]time.Time", "[]time.Time", "[]time.Time", "nil"},
 	"timestamptz":        {"time.Time", "sql.NullTime", "Time", "nil"},
 	"time":               {"time.Time", "sql.NullTime", "Time", "nil"},
 	"timetz":             {"time.Time", "sql.NullTime", "Time", "nil"},
@@ -170,13 +172,13 @@ func getFields(tableName, driverName string, db *sql.DB) ([]Field, []Field, erro
 					table_schema = DATABASE() `
 	sqlStr += fmt.Sprintf(" and t.table_name = '%s' order by is_primary_key desc", tableName)
 
-	if driverName == driver.DRIVER_NAME_POSTGRES {
+	if driver.IsPostgres(driverName) {
 		sqlStr = `SELECT 
 						t.column_name name ,
 						t.udt_name type,
 						CASE WHEN t.is_nullable='YES' THEN 1  ELSE 0  END is_nullable,
 						CASE WHEN tc.constraint_type='PRIMARY KEY' THEN 1  ELSE 0  END is_primary_key,
-						CASE WHEN t.column_comment is null THEN ''	ELSE t.column_comment END  comment,
+						''  comment,
 						t.column_default default
 					FROM 
 						information_schema.columns t 
@@ -208,7 +210,7 @@ func getFields(tableName, driverName string, db *sql.DB) ([]Field, []Field, erro
 		field.FieldTypeDefault = dbType[field.ColumnType].defaultValue
 		field.FieldNullType = dbType[field.ColumnType].nullType
 		field.FieldNullTypeValue = dbType[field.ColumnType].nullTypeValue
-		field.FieldOrmTag = fmt.Sprintf("orm:\"%v\"", field.ColumnName)
+		field.FieldOrmTag = fmt.Sprintf("db:\"%v\"", field.ColumnName)
 		field.FieldJsonTag = fmt.Sprintf("json:\"%v\"", field.ColumnName)
 		field.FieldFormTag = fmt.Sprintf("form:\"%v\"", field.ColumnName)
 		val, _ := field.ColumnDefault.Value()
@@ -252,6 +254,7 @@ func (gen *Generator) Gen(modules []Module) error {
 		// 	continue
 		// }
 		tableName := module.TableName
+		module.Project = gen.project
 		module.CreateTime = time.Now().Format("2006-01:02 15:04:05.006")
 		module.Fields = fields
 		module.PrimaryKeyFields = primaryKeyFields
@@ -268,9 +271,9 @@ func (gen *Generator) Gen(modules []Module) error {
 		module.ModelFilePath = module.ModulePath + "/" + module.ModelPackageName
 
 		module.ExtendPackageName = "extend"
-		module.ExtendPackagePath = gen.project + urls[1] + "/" + module.ModelPackageName
+		module.ExtendPackagePath = gen.project + urls[1] + "/" + module.ExtendPackageName
 		module.ExtendFileName = tableName + "_" + module.ExtendPackageName + ".go"
-		module.ExtendFilePath = module.ModulePath + "/" + module.ModelPackageName
+		module.ExtendFilePath = module.ModulePath + "/" + module.ExtendPackageName
 
 		module.ViewPackageName = "view"
 		module.ViewPackagePath = gen.project + urls[1] + "/" + module.ViewPackageName
@@ -408,6 +411,7 @@ func getModelTemplate() string {
 	
 	import (
 		"database/sql"
+		"time"
 	)
 	
 	type {{.TableNameUpperCamel}}Model struct {
@@ -512,13 +516,14 @@ func getDaoTemplate() string {
 	
 	import (
 		"database/sql"
+		"{{.Project}}/library/database"
 		"github.com/go-lazyer/norm"
 		"github.com/go-lazyer/norm/nsql"
 		"{{.ModelPackagePath}}"
 	)
 
 	func Count(orm *nsql.CountOrm) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
@@ -527,7 +532,7 @@ func getDaoTemplate() string {
 
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
 	func QuerySingleByPkey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}) (model.{{.TableNameUpperCamel}}Model, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return model.{{.TableNameUpperCamel}}Model{}, err
 		}
@@ -546,7 +551,7 @@ func getDaoTemplate() string {
 	{{ end -}}
 
 	func QuerySingle(orm  *nsql.SelectOrm) (model.{{.TableNameUpperCamel}}Model, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return model.{{.TableNameUpperCamel}}Model{}, err
 		}
@@ -558,7 +563,7 @@ func getDaoTemplate() string {
 	}
 
 	func Query(orm  *nsql.SelectOrm) ([]model.{{.TableNameUpperCamel}}Model, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return nil, err
 		}
@@ -571,7 +576,7 @@ func getDaoTemplate() string {
 
 
 	func QueryExtend(orm  *nsql.SelectOrm) ([]model.{{.TableNameUpperCamel}}Extend, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return nil, err
 		}
@@ -585,7 +590,7 @@ func getDaoTemplate() string {
 	{{if eq (len .PrimaryKeyFields) 1}} 
 
 	func QueryByPkeys(id []{{(index .PrimaryKeyFields 0).FieldType}}) ([]model.{{.TableNameUpperCamel}}Model, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return nil, err
 		}
@@ -630,23 +635,23 @@ func getDaoTemplate() string {
 	{{end}}
 
 	func Insert(m model.{{.TableNameUpperCamel}}Model, tx... *sql.Tx) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
-		return norm.InsertByMap(model.TABLE_NAME, m.ToMap(false),ds)
+		return norm.InsertByMap(model.TABLE_NAME, {{if gt (len .PrimaryKeyFields) 0}}model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}{{else}}""{{end}}, m.ToMap(false), ds)
 	}
 
-	func Inserts(ms []model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) ([]int64, error) {
-		ds, err := database.DataSource()
+	func Inserts(ms []model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) (int64, error) {
+		ds, err := GetDataSource()
 		if err != nil {
-			return []int64{}, err
+			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
 
 		maps := make([]map[string]any, 0)
@@ -654,17 +659,17 @@ func getDaoTemplate() string {
 			maps = append(maps, m.ToMap(false))
 		}
 
-		return norm.InsertsByMap(model.TABLE_NAME, maps,ds)
+		return norm.InsertsByMap(model.TABLE_NAME, {{if gt (len .PrimaryKeyFields) 0}}model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}{{else}}""{{end}}, maps, ds)
 	}
 
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
 	func Update(m model.{{.TableNameUpperCamel}}Model, tx... *sql.Tx) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
 
 		{{ if eq (len .PrimaryKeyFields) 1 -}} 
@@ -677,79 +682,59 @@ func getDaoTemplate() string {
 	}
 	{{end}}
 	func UpdateByOrm(orm *nsql.UpdateOrm, tx ...*sql.Tx) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
 		return norm.UpdateByOrm(orm,ds)
 	}
-	func Updates(ms []model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) ([]int64, error) {
-		ds, err := database.DataSource()
-		if err != nil {
-			return []int64{}, err
-		}
-		if len(tx) > 0 {
-			ds.Tx = tx[0]
-		}
-		querys := make([]nsql.BaseQuery, 0)
-		maps := make([]map[string]any, 0)
-		for _, m := range ms {
-			{{ if eq (len .PrimaryKeyFields) 1 -}} 
-			querys = append(querys, nsql.NewEqualQuery(model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}, m.{{(index .PrimaryKeyFields 0).FieldName}}.{{(index .PrimaryKeyFields 0).FieldNullTypeValue}}))
-			{{ else -}}
-			querys = append(querys, nsql.NewBoolQuery(){{range $field := .PrimaryKeyFields}} .And(nsql.NewEqualQuery(model.{{ .ColumnNameUpper }}, m.{{.FieldName}}.{{.FieldNullTypeValue}})) {{end}})
-			{{end -}}
-			maps = append(maps, m.ToMap(false))
-		}
-		orm := nsql.NewUpdateOrm().Table(model.TABLE_NAME).Update(maps...).Where(querys...)
-		return norm.UpdatesByOrm(orm,ds)
-	}
 	func Upsert(m model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
-		return norm.UpsertByMap(model.TABLE_NAME, m.ToMap(false),ds)
+		return norm.UpsertByMap(model.TABLE_NAME, m.ToMap(false), {{if gt (len .PrimaryKeyFields) 0}}[]string{ {{range $i,$field := .PrimaryKeyFields}}{{if ne $i 0}}, {{end}}model.{{ .ColumnNameUpper }}{{end}} }{{else}}nil{{end}}, ds)
 	}
 
 	func Upserts(ms []model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) ([]int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return []int64{}, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
 		maps := make([]map[string]any, 0)
 		for _, model := range ms {
 			maps = append(maps, model.ToMap(false))
 		}
-		return norm.UpsertsByMap(model.TABLE_NAME, maps,ds)
+		return norm.UpsertsByMap(model.TABLE_NAME, maps, {{if gt (len .PrimaryKeyFields) 0}}[]string{ {{range $i,$field := .PrimaryKeyFields}}{{if ne $i 0}}, {{end}}model.{{ .ColumnNameUpper }}{{end}} }{{else}}nil{{end}}, ds)
 	}
+
 	func Delete(orm  *nsql.DeleteOrm, tx... *sql.Tx) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
 		return norm.DeleteByOrm(orm,ds)
 	}
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
 	func DeleteByPkey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}, tx... *sql.Tx) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
 		{{ if eq (len .PrimaryKeyFields) 1 -}} 
 		orm := nsql.NewDeleteOrm().Table(model.TABLE_NAME).Where(nsql.NewEqualQuery(model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}, {{(index .PrimaryKeyFields 0).ColumnNameLowerCamel}}))
@@ -762,12 +747,12 @@ func getDaoTemplate() string {
 	{{ end -}}
 	{{ if eq (len .PrimaryKeyFields) 1 -}}
 	func DeleteByPkeys(ids []any, tx... *sql.Tx) (int64, error) {
-		ds, err := database.DataSource()
+		ds, err := GetDataSource()
 		if err != nil {
 			return 0, err
 		}
 		if len(tx) > 0 {
-			ds.Tx = tx[0]
+			ds.SetTx(tx[0])
 		}
 		orm := nsql.NewDeleteOrm().Table(model.TABLE_NAME).Where(nsql.NewInQuery(model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}, ids))
 		return norm.DeleteByOrm(orm,ds)

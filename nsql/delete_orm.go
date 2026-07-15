@@ -4,18 +4,21 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-
-	"github.com/go-lazyer/norm/driver"
 )
 
 type DeleteOrm struct {
-	pageSize  int
-	querys    []BaseQuery
-	tableName string
+	driverName string
+	pageSize   int
+	querys     []BaseQuery
+	tableName  string
 }
 
 func NewDeleteOrm() *DeleteOrm {
 	return &DeleteOrm{}
+}
+func (s *DeleteOrm) DriverName(driverName string) *DeleteOrm {
+	s.driverName = driverName
+	return s
 }
 func (s *DeleteOrm) Table(tableName string) *DeleteOrm {
 	s.tableName = tableName
@@ -45,54 +48,18 @@ func (s *DeleteOrm) ToSql(prepare bool) (string, []any, error) {
 	sql.WriteString("delete from " + s.tableName + " ")
 
 	sql.WriteString(" where   ")
+	phIdx := 1
 	for i, query := range s.querys {
 		if i != 0 {
 			sql.WriteString(" or ")
 		}
-		source, param, _ := query.Source(s.tableName, prepare)
+		source, param, _ := query.Source(s.tableName, prepare, s.driverName, &phIdx)
 		sql.WriteString(" " + source + " ")
 		params = append(params, param...)
 	}
 	if s.pageSize > 0 {
-		sql.WriteString(fmt.Sprintf(" limit %s", driver.PLACE_HOLDER_GO))
+		sql.WriteString(fmt.Sprintf(" limit %s", nextPlaceholder(s.driverName, &phIdx)))
 		params = append(params, s.pageSize)
-	}
-	return sql.String(), params, nil
-}
-func (s *DeleteOrm) ToPrepareSql() (string, [][]any, error) {
-	if s.tableName == "" {
-		return "", nil, errors.New("tableName cannot be empty")
-	}
-	if len(s.querys) <= 0 {
-		return "", nil, errors.New("the querys cannot be empty")
-	}
-	params := make([][]any, len(s.querys))
-	var sql bytes.Buffer
-	sql.WriteString("delete from " + s.tableName + " ")
-
-	// 添加查询
-	for n, query := range s.querys { //forr 会自动判断 querys 不为空
-		if query == nil {
-			continue
-		}
-		source, p, err := query.Source(s.tableName, true)
-		if err != nil {
-			return "", nil, err
-		}
-		if source == "" {
-			continue
-		}
-		if n == 0 {
-			sql.WriteString(" where   " + source + " ")
-		}
-		params[n] = append(params[n], p...)
-	}
-
-	if s.pageSize > 0 {
-		sql.WriteString(fmt.Sprintf(" limit %s", driver.PLACE_HOLDER_GO))
-		for i, param := range params {
-			params[i] = append(param, s.pageSize)
-		}
 	}
 	return sql.String(), params, nil
 }
