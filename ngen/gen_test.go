@@ -1,8 +1,11 @@
 package ngen
 
 import (
+	"bytes"
 	"fmt"
+	"strings"
 	"testing"
+	"text/template"
 	// _ "github.com/go-sql-driver/mysql"
 )
 
@@ -41,4 +44,47 @@ func TestGenModel(t *testing.T) {
 	}
 
 	fmt.Println(NewGen().Dsn(dsn).Project("go-generator").Gen(tables))
+}
+
+func TestGetDaoTemplateIncludesQueryBySql(t *testing.T) {
+	tmpl, err := template.New("dao").Parse(getDaoTemplate())
+	if err != nil {
+		t.Fatalf("parse dao template: %v", err)
+	}
+
+	module := Module{
+		Project:             "example",
+		TableName:           "user",
+		TableNameUpperCamel: "User",
+		TableNameLowerCamel: "user",
+		ModelPackagePath:    "example/model",
+		PrimaryKeyFields: []Field{
+			{
+				ColumnNameLowerCamel: "id",
+				ColumnNameUpper:      "ID",
+				FieldName:            "Id",
+				FieldNullTypeValue:   "Int64",
+				FieldType:            "int64",
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, module); err != nil {
+		t.Fatalf("execute dao template: %v", err)
+	}
+
+	content := buf.String()
+	if !strings.Contains(content, "func QueryBySql(sqlStr string, params []any) ([]model.UserModel, error)") {
+		t.Fatalf("rendered dao template missing QueryBySql wrapper:\n%s", content)
+	}
+	if !strings.Contains(content, "norm.QueryBySql[model.UserModel](sqlStr, params, ds)") {
+		t.Fatalf("rendered dao template missing norm.QueryBySql call:\n%s", content)
+	}
+	if !strings.Contains(content, "func QueryExtendBySql(sqlStr string, params []any) ([]model.UserExtend, error)") {
+		t.Fatalf("rendered dao template missing QueryExtendBySql wrapper:\n%s", content)
+	}
+	if !strings.Contains(content, "norm.QueryBySql[model.UserExtend](sqlStr, params, ds)") {
+		t.Fatalf("rendered dao template missing extend norm.QueryBySql call:\n%s", content)
+	}
 }

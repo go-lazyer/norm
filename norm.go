@@ -3,12 +3,16 @@ package norm
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"os"
 	"reflect"
 	"strings"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -83,21 +87,40 @@ func (ds *DataSource) SetTx(tx *sql.Tx) {
 	ds.tx = tx
 }
 
+func (ds *DataSource) GetPgxPool() (*pgxpool.Pool, error) {
+	if ds.pgxPool == nil {
+		return nil, errors.New("pgx pool not initialized")
+	}
+	return ds.pgxPool, nil
+}
+
 // SetPgxTx sets a pgx native transaction on the DataSource for external use.
 func (ds *DataSource) SetPgxTx(tx pgx.Tx) {
 	ds.pgxTx = tx
 }
 
-func CountByOrm(orm *nsql.CountOrm, ds DataSource) (int64, error) {
+// Close closes the underlying database connection pool.
+// For pgx driver, it closes the pgxpool.Pool.
+// For database/sql driver, it closes the *sql.DB.
+func (ds *DataSource) Close() {
+	if ds.pgxPool != nil {
+		ds.pgxPool.Close()
+	}
+	if ds.db != nil {
+		ds.db.Close()
+	}
+}
+
+func (ds *DataSource) CountByOrm(orm *nsql.CountOrm) (int64, error) {
 	orm.DriverName(ds.DriverName)
 	sqlStr, params, err := orm.ToSql(true)
 	if err != nil {
 		return 0, err
 	}
-	return CountBySql(sqlStr, params, ds)
+	return ds.CountBySql(sqlStr, params)
 }
 
-func CountBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
+func (ds *DataSource) CountBySql(sqlStr string, params []any) (int64, error) {
 	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "count") {
 		return 0, errors.New("must be a count sql")
 	}
@@ -122,7 +145,7 @@ func CountBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
 }
 
 // 查询
-func QueryByOrm[T any](orm *nsql.SelectOrm, ds DataSource) ([]T, error) {
+func (ds *DataSource) QueryByOrm[T any](orm *nsql.SelectOrm) ([]T, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return nil, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -134,9 +157,9 @@ func QueryByOrm[T any](orm *nsql.SelectOrm, ds DataSource) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	return QueryBySql[T](sqlStr, params, ds)
+	return ds.QueryBySql[T](sqlStr, params)
 }
-func QueryBySql[T any](sqlStr string, params []any, ds DataSource) ([]T, error) {
+func (ds *DataSource) QueryBySql[T any](sqlStr string, params []any) ([]T, error) {
 	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "select") {
 		return nil, errors.New("must be a select sql")
 	}
@@ -164,7 +187,7 @@ func QueryBySql[T any](sqlStr string, params []any, ds DataSource) ([]T, error) 
 }
 
 // InsertByMap 在 PostgreSQL 下单条插入，主键列需由调用方显式传入。
-func InsertByMap(tableName, primaryKey string, insertMap map[string]any, ds DataSource) (int64, error) {
+func (ds *DataSource) InsertByMap(tableName, primaryKey string, insertMap map[string]any) (int64, error) {
 	if tableName == "" {
 		return 0, errors.New("tableName is empty")
 	}
@@ -178,10 +201,10 @@ func InsertByMap(tableName, primaryKey string, insertMap map[string]any, ds Data
 		return 0, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
 	orm := nsql.NewInsertOrm().DriverName(ds.DriverName).Table(tableName).PrimaryKey(primaryKey).Insert(insertMap)
-	return InsertByOrm(orm, ds)
+	return ds.InsertByOrm(orm)
 }
 
-func InsertByOrm(orm *nsql.InsertOrm, ds DataSource) (int64, error) {
+func (ds *DataSource) InsertByOrm(orm *nsql.InsertOrm) (int64, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return 0, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -190,11 +213,11 @@ func InsertByOrm(orm *nsql.InsertOrm, ds DataSource) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return InsertBySql(sqlStr, params, ds)
+	return ds.InsertBySql(sqlStr, params)
 }
 
 // InsertBySql 执行单条插入，返回插入记录的 ID。
-func InsertBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
+func (ds *DataSource) InsertBySql(sqlStr string, params []any) (int64, error) {
 
 	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "insert") {
 		return 0, errors.New("must be a insert sql")
@@ -240,7 +263,7 @@ func InsertBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
 }
 
 // InsertsByMap 在 PostgreSQL 下批量插入，主键列需由调用方显式传入。
-func InsertsByMap(tableName, primaryKey string, insertMap []map[string]any, ds DataSource) (int64, error) {
+func (ds *DataSource) InsertsByMap(tableName, primaryKey string, insertMap []map[string]any) (int64, error) {
 	if tableName == "" {
 		return 0, errors.New("tableName is empty")
 	}
@@ -254,11 +277,11 @@ func InsertsByMap(tableName, primaryKey string, insertMap []map[string]any, ds D
 		return 0, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
 	orm := nsql.NewInsertOrm().DriverName(ds.DriverName).Table(tableName).PrimaryKey(primaryKey).Insert(insertMap...)
-	return InsertsByOrm(orm, ds)
+	return ds.InsertsByOrm(orm)
 }
 
 // InsertsByOrm 批量插入，返回成功插入的条数。
-func InsertsByOrm(orm *nsql.InsertOrm, ds DataSource) (int64, error) {
+func (ds *DataSource) InsertsByOrm(orm *nsql.InsertOrm) (int64, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return 0, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -267,11 +290,11 @@ func InsertsByOrm(orm *nsql.InsertOrm, ds DataSource) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return InsertsBySql(sqlStr, params, ds)
+	return ds.InsertsBySql(sqlStr, params)
 }
 
 // InsertsBySql 批量插入，返回成功插入的条数。
-func InsertsBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
+func (ds *DataSource) InsertsBySql(sqlStr string, params []any) (int64, error) {
 	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "insert") {
 		return 0, errors.New("must be a insert sql")
 	}
@@ -314,7 +337,7 @@ func InsertsBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
 	return rowsAffected, nil
 }
 
-func UpdateByOrm(orm *nsql.UpdateOrm, ds DataSource) (int64, error) {
+func (ds *DataSource) UpdateByOrm(orm *nsql.UpdateOrm) (int64, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return 0, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -323,9 +346,9 @@ func UpdateByOrm(orm *nsql.UpdateOrm, ds DataSource) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UpdateBySql(sqlStr, params, ds)
+	return ds.UpdateBySql(sqlStr, params)
 }
-func UpdateBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
+func (ds *DataSource) UpdateBySql(sqlStr string, params []any) (int64, error) {
 
 	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "update") {
 		return 0, errors.New("must be a update sql")
@@ -368,7 +391,7 @@ func UpdateBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
 	return num, nil
 }
 
-func UpdatesByOrm(orm *nsql.UpdateOrm, ds DataSource) ([]int64, error) {
+func (ds *DataSource) UpdatesByOrm(orm *nsql.UpdateOrm) ([]int64, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return nil, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -377,21 +400,21 @@ func UpdatesByOrm(orm *nsql.UpdateOrm, ds DataSource) ([]int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	return UpdatesBySql(sqlStr, params, ds)
+	return ds.UpdatesBySql(sqlStr, params)
 }
 
-func UpdatesBySql(sqlStr string, params []any, ds DataSource) ([]int64, error) {
+func (ds *DataSource) UpdatesBySql(sqlStr string, params []any) ([]int64, error) {
 	if sqlStr == "" || !strings.Contains(strings.ToUpper(sqlStr), "CASE") {
 		return nil, errors.New("must be a update use CASE WHEN sql")
 	}
-	n, err := UpdateBySql(sqlStr, params, ds)
+	n, err := ds.UpdateBySql(sqlStr, params)
 	if err != nil {
 		return nil, err
 	}
 	return []int64{n}, nil
 }
 
-func DeleteByOrm(orm *nsql.DeleteOrm, ds DataSource) (int64, error) {
+func (ds *DataSource) DeleteByOrm(orm *nsql.DeleteOrm) (int64, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return 0, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -400,9 +423,9 @@ func DeleteByOrm(orm *nsql.DeleteOrm, ds DataSource) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return DeleteBySql(sqlStr, params, ds)
+	return ds.DeleteBySql(sqlStr, params)
 }
-func DeleteBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
+func (ds *DataSource) DeleteBySql(sqlStr string, params []any) (int64, error) {
 	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "delete") {
 		return 0, errors.New("must be a delete sql")
 	}
@@ -444,7 +467,7 @@ func DeleteBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
 	return num, nil
 }
 
-func UpsertByMap(tableName string, insertMap map[string]any, conflict []string, ds DataSource) (int64, error) {
+func (ds *DataSource) UpsertByMap(tableName string, insertMap map[string]any, conflict []string) (int64, error) {
 	if tableName == "" {
 		return 0, errors.New("tableName is empty")
 	}
@@ -455,10 +478,10 @@ func UpsertByMap(tableName string, insertMap map[string]any, conflict []string, 
 		return 0, nil
 	}
 	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap).Update(nsql.MapKeys(insertMap)).Conflict(conflict...).DriverName(ds.DriverName)
-	return UpsertByOrm(orm, ds)
+	return ds.UpsertByOrm(orm)
 }
 
-func UpsertByOrm(orm *nsql.UpsertOrm, ds DataSource) (int64, error) {
+func (ds *DataSource) UpsertByOrm(orm *nsql.UpsertOrm) (int64, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return 0, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -467,9 +490,9 @@ func UpsertByOrm(orm *nsql.UpsertOrm, ds DataSource) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return UpsertBySql(sqlStr, params, ds)
+	return ds.UpsertBySql(sqlStr, params)
 }
-func UpsertBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
+func (ds *DataSource) UpsertBySql(sqlStr string, params []any) (int64, error) {
 
 	if sqlStr == "" || !strings.Contains(strings.ToLower(sqlStr), "on") {
 		return 0, errors.New("must be a upsert sql")
@@ -511,7 +534,7 @@ func UpsertBySql(sqlStr string, params []any, ds DataSource) (int64, error) {
 	return num, nil
 }
 
-func UpsertsByMap(tableName string, insertMap []map[string]any, conflict []string, ds DataSource) ([]int64, error) {
+func (ds *DataSource) UpsertsByMap(tableName string, insertMap []map[string]any, conflict []string) ([]int64, error) {
 	if tableName == "" {
 		return []int64{}, errors.New("tableName is empty")
 	}
@@ -522,10 +545,10 @@ func UpsertsByMap(tableName string, insertMap []map[string]any, conflict []strin
 		return []int64{}, nil
 	}
 	orm := nsql.NewUpsertOrm().Table(tableName).Insert(insertMap...).Update(nsql.MapKeys(insertMap[0])).Conflict(conflict...).DriverName(ds.DriverName)
-	return UpsertsByOrm(orm, ds)
+	return ds.UpsertsByOrm(orm)
 }
 
-func UpsertsByOrm(orm *nsql.UpsertOrm, ds DataSource) ([]int64, error) {
+func (ds *DataSource) UpsertsByOrm(orm *nsql.UpsertOrm) ([]int64, error) {
 	if !driver.IsPgx(ds.DriverName) && ds.db == nil {
 		return []int64{}, errors.New("db not allowed to be nil,need to instantiate yourself")
 	}
@@ -534,21 +557,21 @@ func UpsertsByOrm(orm *nsql.UpsertOrm, ds DataSource) ([]int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	return UpsertsBySql(sqlStr, params, ds)
+	return ds.UpsertsBySql(sqlStr, params)
 }
 
-func UpsertsBySql(sqlStr string, params []any, ds DataSource) ([]int64, error) {
+func (ds *DataSource) UpsertsBySql(sqlStr string, params []any) ([]int64, error) {
 	if sqlStr == "" || !strings.Contains(strings.ToUpper(sqlStr), "ON") {
 		return nil, errors.New("must be a upsert sql with ON CONFLICT / ON DUPLICATE KEY")
 	}
-	n, err := UpsertBySql(sqlStr, params, ds)
+	n, err := ds.UpsertBySql(sqlStr, params)
 	if err != nil {
 		return nil, err
 	}
 	return []int64{n}, nil
 }
 
-func ExecBySql(sqlStr string, ds DataSource) (int64, error) {
+func (ds *DataSource) ExecBySql(sqlStr string) (int64, error) {
 
 	if sqlStr == "" {
 		return 0, errors.New("sql must not be empty")
@@ -579,6 +602,125 @@ func ExecBySql(sqlStr string, ds DataSource) (int64, error) {
 		return 0, err
 	}
 	return ret.RowsAffected()
+}
+
+// LoadDataByOrm 批量加载数据文件到表中。
+//
+// 本地文件 vs 服务器文件:
+//   - local=true（默认 false）: 文件在客户端机器上。
+//     MySQL: mysql.RegisterLocalFile + LOAD DATA LOCAL INFILE
+//     pgx:   使用 pgx.CopyFrom 协议（客户端读取并发送）
+//   - local=false: 文件在数据库服务器上。
+//     MySQL: LOAD DATA INFILE（无需注册）
+//     pgx:   COPY table FROM '/server/path'（服务端直接读取）
+func LoadDataByOrm(orm *nsql.LoadDataOrm, ds DataSource) (int64, error) {
+	orm.DriverName(ds.DriverName)
+
+	if driver.IsPgx(ds.DriverName) {
+		if orm.GetLocal() {
+			return loadDataByPgxCopyFrom(orm, ds)
+		}
+		return loadDataByPgxServerCopy(orm, ds)
+	}
+
+	// MySQL / database/sql 路径
+	if ds.db == nil && ds.tx == nil {
+		return 0, errors.New("db and tx not allowed to be all nil,need to instantiate yourself")
+	}
+
+	// 本地文件需要先注册
+	if orm.GetLocal() {
+		mysql.RegisterLocalFile(orm.GetFilePath())
+		defer mysql.DeregisterLocalFile(orm.GetFilePath())
+	}
+
+	sqlStr, err := orm.ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	var ret sql.Result
+	if ds.tx != nil {
+		ret, err = ds.tx.Exec(sqlStr)
+	} else {
+		ret, err = ds.db.Exec(sqlStr)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return ret.RowsAffected()
+}
+
+// loadDataByPgxCopyFrom 使用 pgx 的 CopyFrom 协议流式加载客户端 CSV 文件到 PostgreSQL。
+// 通过 csvCopyFromSource 按需读取，支持大文件。
+func loadDataByPgxCopyFrom(orm *nsql.LoadDataOrm, ds DataSource) (int64, error) {
+	if ds.pgxPool == nil && ds.pgxTx == nil {
+		return 0, errors.New("pgx pool and tx not allowed to be all nil")
+	}
+
+	f, err := os.Open(orm.GetFilePath())
+	if err != nil {
+		return 0, fmt.Errorf("loaddata: open file: %w", err)
+	}
+	defer f.Close()
+
+	reader := csv.NewReader(f)
+	reader.LazyQuotes = true
+
+	// 配置字段分隔符
+	if t := orm.GetTerminated(); t != "" && len(t) > 0 {
+		reader.Comma = rune(t[0])
+	}
+
+	// 跳过忽略行
+	for i := 0; i < orm.GetIgnoreLines(); i++ {
+		if _, err := reader.Read(); err != nil {
+			if err == io.EOF {
+				return 0, nil
+			}
+			return 0, fmt.Errorf("loaddata: skip line %d: %w", i+1, err)
+		}
+	}
+
+	ctx := context.Background()
+	tableName := orm.GetTableName()
+	columnNames := orm.GetColumnList()
+
+	var copyCount int64
+	if ds.pgxTx != nil {
+		copyCount, err = ds.pgxTx.CopyFrom(ctx, pgx.Identifier{tableName}, columnNames, nil)
+	} else {
+		copyCount, err = ds.pgxPool.CopyFrom(ctx, pgx.Identifier{tableName}, columnNames, nil)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("loaddata: copy from: %w", err)
+	}
+
+	return copyCount, nil
+}
+
+// loadDataByPgxServerCopy 使用 PostgreSQL 服务端 COPY 命令加载服务器上的文件。
+func loadDataByPgxServerCopy(orm *nsql.LoadDataOrm, ds DataSource) (int64, error) {
+	if ds.pgxPool == nil && ds.pgxTx == nil {
+		return 0, errors.New("pgx pool and tx not allowed to be all nil")
+	}
+
+	sqlStr, err := orm.ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	ctx := context.Background()
+	var tag pgconn.CommandTag
+	if ds.pgxTx != nil {
+		tag, err = ds.pgxTx.Exec(ctx, sqlStr)
+	} else {
+		tag, err = ds.pgxPool.Exec(ctx, sqlStr)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("loaddata: server copy: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }
 
 // 把查询结果映射为实体
@@ -643,7 +785,7 @@ func getAllFieldToColIndex(structType reflect.Type, columns []string) (map[strin
 		if fieldName, ok := fieldMap[columnName]; ok {
 			fieldToColIndex[fieldName] = i
 		} else {
-			fmt.Printf("table column %s not found in struct fields\n", columnName)
+			// fmt.Printf("table column %s not found in struct fields\n", columnName)
 		}
 	}
 	return fieldToColIndex, nil

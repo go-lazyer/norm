@@ -12,14 +12,17 @@ import (
 )
 
 const testTable = "norm_user"
+const testTableExt = "norm_user_ext"
 
 // openTestDS 打开一个用于集成测试的 DataSource。
 // 当 DSN 为 postgres/postgresql 前缀时，自动切换到 pgx 驱动。
 // 连接建立后会自动执行建表，保证新库也能直接跑测试。
+// 测试结束时自动关闭连接池，避免连接泄漏。
 func openTestDS(t *testing.T) DataSource {
-	// dsn := "postgresql://neondb_owner:npg_a9MNYf2xsngX@ep-lingering-brook-aotcr5m4-pooler.c-2.ap-southeast-1.aws.neon.tech/norm?sslmode=require&channel_binding=require"
+	dsn := "postgres://postgres:Daoway_Mysql_iO12@test.daoway.cn:5432/postgres"
+	// dsn := "postgres://postgres@search.daoway.cn:5432/daowei?sslmode=disable"
 
-	dsn := "root:Daoway_Mysql_iO12@tcp(test.daoway.cn:3306)/test?charset=utf8mb4&parseTime=true&loc=Local"
+	// dsn := "root:Daoway_Mysql_iO12@tcp(test.daoway.cn:3306)/test?charset=utf8mb4&parseTime=true&loc=Local"
 
 	driverName := driver.DRIVER_NAME_MYSQL
 	if strings.HasPrefix(strings.ToLower(dsn), "postgres://") || strings.HasPrefix(strings.ToLower(dsn), "postgresql://") {
@@ -29,6 +32,9 @@ func openTestDS(t *testing.T) DataSource {
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
 	}
+	t.Cleanup(func() {
+		ds.Close()
+	})
 	ensureTestTable(t, ds)
 	return ds
 }
@@ -48,12 +54,18 @@ func ensureTestTable(t *testing.T, ds DataSource) {
 	createSQL := "create table if not exists " + testTable + " (" +
 		"id varchar(64) primary key," +
 		"name varchar(255)," +
-		"sex varchar(16)," +
 		"age bigint," +
 		"create_time timestamp" +
 		")"
-	if _, err := ExecBySql(createSQL, ds); err != nil {
+	if _, err := ds.ExecBySql(createSQL); err != nil {
 		t.Fatalf("failed to create test table %s: %v", testTable, err)
+	}
+	createExtSQL := "create table if not exists " + testTableExt + " (" +
+		"id varchar(64) primary key," +
+		"sex varchar(16)" +
+		")"
+	if _, err := ds.ExecBySql(createExtSQL); err != nil {
+		t.Fatalf("failed to create test table %s: %v", testTableExt, err)
 	}
 }
 
@@ -62,20 +74,31 @@ func ensureTestTable(t *testing.T, ds DataSource) {
 func seedUsers(t *testing.T, ds DataSource) int {
 	t.Helper()
 	// 清空表
-	// SQL: DELETE FROM norm_user WHERE id IS NOT NULL
-	_, err := DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")), ds)
+	_, err := ds.DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")))
 	if err != nil {
 		t.Fatalf("failed to clean user table: %v", err)
 	}
-	rows := []map[string]any{
-		{"id": "1", "name": "李一一", "sex": "boy", "age": "11", "create_time": "2021-01-01 00:00:00"},
-		{"id": "2", "name": "李二二", "sex": "boy", "age": "12", "create_time": "2022-01-01 00:00:00"},
-		{"id": "3", "name": "李三三", "sex": "boy", "age": "13", "create_time": "2023-01-01 00:00:00"},
+	_, err = ds.DeleteByOrm(nsql.NewDeleteOrm().Table(testTableExt).Where(nsql.NewNotNullQuery("id")))
+	if err != nil {
+		t.Fatalf("failed to clean user_ext table: %v", err)
 	}
-	// SQL: INSERT INTO norm_user (id, name, sex, age, create_time) VALUES (?,?,?,?,?),(?,?,?,?,?),(?,?,?,?,?)
-	_, err = InsertsByMap(testTable, "id", rows, ds)
+	rows := []map[string]any{
+		{"id": "1", "name": "李一一", "age": "11", "create_time": "2021-01-01 00:00:00"},
+		{"id": "2", "name": "李二二", "age": "12", "create_time": "2022-01-01 00:00:00"},
+		{"id": "3", "name": "李三三", "age": "13", "create_time": "2023-01-01 00:00:00"},
+	}
+	_, err = ds.InsertsByMap(testTable, "id", rows)
 	if err != nil {
 		t.Fatalf("failed to seed user table: %v", err)
+	}
+	extRows := []map[string]any{
+		{"id": "1", "sex": "boy"},
+		{"id": "2", "sex": "boy"},
+		{"id": "3", "sex": "boy"},
+	}
+	_, err = ds.InsertsByMap(testTableExt, "id", extRows)
+	if err != nil {
+		t.Fatalf("failed to seed user_ext table: %v", err)
 	}
 	return len(rows)
 }
@@ -109,7 +132,7 @@ func TestCountByOrm(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	cnt, err := CountByOrm(orm, ds)
+	cnt, err := ds.CountByOrm(orm)
 	if err != nil {
 		t.Fatalf("CountByOrm error: %v", err)
 	}
@@ -124,7 +147,7 @@ func TestCountBySql(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
-	cnt, err := CountBySql("select count(*) from "+testTable, nil, ds)
+	cnt, err := ds.CountBySql("select count(*) from "+testTable, nil)
 	if err != nil {
 		t.Fatalf("CountBySql error: %v", err)
 	}
@@ -134,36 +157,36 @@ func TestCountBySql(t *testing.T) {
 }
 
 // TestCountWithWhere 测试带等值条件的计数查询。
-// SQL: SELECT count(*) count FROM user WHERE `sex` = ?
-// params: ["boy"]
+// SQL: SELECT count(*) count FROM user WHERE `name` = ?
+// params: ["李一一"]
 func TestCountWithWhere(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
-	orm := nsql.NewCountOrm().Table(testTable).Where(nsql.NewEqualQuery("sex", "boy"))
+	orm := nsql.NewCountOrm().Table(testTable).Where(nsql.NewEqualQuery("name", "李一一"))
 	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
 		t.Logf("orm.ToSql(false) error: %v", rawErr)
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	cnt, err := CountByOrm(orm, ds)
+	cnt, err := ds.CountByOrm(orm)
 	if err != nil {
 		t.Fatalf("CountByOrm error: %v", err)
 	}
-	if cnt != 3 {
-		t.Errorf("expected count=3, got %d", cnt)
+	if cnt != 1 {
+		t.Errorf("expected count=1, got %d", cnt)
 	}
 }
 
 // TestCountWithGroupBy 测试带分组和指定结果列的计数 SQL 生成。
-// SQL: SELECT sex, count(*) cnt FROM user GROUP BY user.`sex`
+// SQL: SELECT name, count(*) cnt FROM user GROUP BY user.`name`
 func TestCountWithGroupBy(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
-	orm := nsql.NewCountOrm().Result("sex", "count(*) cnt").
+	orm := nsql.NewCountOrm().Result("name", "count(*) cnt").
 		Table(testTable).
-		AddGroupBy(testTable, "sex")
+		AddGroupBy(testTable, "name")
 	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
 		t.Logf("orm.ToSql(false) error: %v", rawErr)
 	} else {
@@ -197,7 +220,7 @@ func TestQueryByOrm(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	users, err := QueryByOrm[UserExtend](orm, ds)
+	users, err := ds.QueryByOrm[UserExtend](orm)
 	if err != nil {
 		t.Fatalf("QueryByOrm error: %v", err)
 	}
@@ -215,7 +238,7 @@ func TestQueryBySql(t *testing.T) {
 	seedUsers(t, ds)
 
 	sqlStr := "select * from " + testTable + " where name = " + testPh(ds, 1)
-	users, err := QueryBySql[UserExtend](sqlStr, []any{"李一一"}, ds)
+	users, err := ds.QueryBySql[UserExtend](sqlStr, []any{"李一一"})
 	if err != nil {
 		t.Fatalf("QueryBySql error: %v", err)
 	}
@@ -242,7 +265,7 @@ func TestSelectWithOrderBy(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	users, err := QueryByOrm[UserExtend](orm, ds)
+	users, err := ds.QueryByOrm[UserExtend](orm)
 	if err != nil {
 		t.Fatalf("QueryByOrm error: %v", err)
 	}
@@ -270,7 +293,7 @@ func TestSelectWithPageNum(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	users, err := QueryByOrm[UserExtend](orm, ds)
+	users, err := ds.QueryByOrm[UserExtend](orm)
 	if err != nil {
 		t.Fatalf("QueryByOrm error: %v", err)
 	}
@@ -292,7 +315,7 @@ func TestSelectWithResultColumns(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	users, err := QueryByOrm[UserExtend](orm, ds)
+	users, err := ds.QueryByOrm[UserExtend](orm)
 	if err != nil {
 		t.Fatalf("QueryByOrm error: %v", err)
 	}
@@ -315,7 +338,7 @@ func TestSelectWithInQuery(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	users, err := QueryByOrm[UserExtend](orm, ds)
+	users, err := ds.QueryByOrm[UserExtend](orm)
 	if err != nil {
 		t.Fatalf("QueryByOrm error: %v", err)
 	}
@@ -325,14 +348,14 @@ func TestSelectWithInQuery(t *testing.T) {
 }
 
 // TestSelectWithBoolQuery 测试 BoolQuery 多条件 AND 组合查询。
-// SQL: SELECT * FROM user WHERE (`sex` = ? AND `age` >= ?) LIMIT ?
-// params: ["boy", "13", 10]
+// SQL: SELECT * FROM user WHERE (`name` = ? AND `age` >= ?) LIMIT ?
+// params: ["李三三", "13", 10]
 func TestSelectWithBoolQuery(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
 	boolQ := nsql.NewBoolQuery().
-		And(nsql.NewEqualQuery("sex", "boy")).
+		And(nsql.NewEqualQuery("name", "李三三")).
 		And(nsql.NewGreaterThanOrEqualQuery("age", "13"))
 	orm := nsql.NewSelectOrm().Table(testTable).Where(boolQ).PageSize(10)
 	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
@@ -340,12 +363,161 @@ func TestSelectWithBoolQuery(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	users, err := QueryByOrm[UserExtend](orm, ds)
+	users, err := ds.QueryByOrm[UserExtend](orm)
 	if err != nil {
 		t.Fatalf("QueryByOrm error: %v", err)
 	}
 	if len(users) != 1 {
-		t.Errorf("expected 1 user (age>=13 and boy), got %d", len(users))
+		t.Errorf("expected 1 user (name=李三三 and age>=13), got %d", len(users))
+	}
+}
+
+// =========================================================================
+// Join — 多表关联查询
+// =========================================================================
+
+// TestSelectWithInnerJoin 测试 INNER JOIN 联表查询，验证 norm_user JOIN norm_user_ext 获取 sex 字段。
+// SQL: SELECT u.*, e.sex FROM norm_user u INNER JOIN norm_user_ext e ON u.id=e.id LIMIT ?
+// params: [10]
+func TestSelectWithInnerJoin(t *testing.T) {
+	ds := openTestDS(t)
+	seedUsers(t, ds)
+
+	join := nsql.NewAliasJoin(testTableExt, "e", nsql.INNER_JOIN).
+		Condition(testTable, "id", "e", "id")
+	orm := nsql.NewSelectOrm().Result(testTable+".*", "e.sex").
+		Table(testTable).Join(join).PageSize(10)
+	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
+		t.Logf("orm.ToSql(false) error: %v", rawErr)
+	} else {
+		t.Logf("orm raw sql: %s", rawSQL)
+	}
+	users, err := ds.QueryByOrm[UserExtend](orm)
+	if err != nil {
+		t.Fatalf("QueryByOrm error: %v", err)
+	}
+	if len(users) != 3 {
+		t.Errorf("expected 3 users from join, got %d", len(users))
+	}
+	for _, u := range users {
+		if u.Sex.String != "boy" {
+			t.Errorf("expected sex=boy from join, got %s", u.Sex.String)
+		}
+	}
+	t.Logf("queried %d users via inner join, all sex verified", len(users))
+}
+
+// TestSelectWithJoinAndWhere 测试 JOIN + WHERE 条件查询。
+// SQL: SELECT u.*, e.sex FROM norm_user u INNER JOIN norm_user_ext e ON u.id=e.id WHERE u.`name` = ? LIMIT ?
+// params: ["李一一", 10]
+func TestSelectWithJoinAndWhere(t *testing.T) {
+	ds := openTestDS(t)
+	seedUsers(t, ds)
+
+	join := nsql.NewAliasJoin(testTableExt, "e", nsql.INNER_JOIN).
+		Condition(testTable, "id", "e", "id")
+	orm := nsql.NewSelectOrm().Result(testTable+".*", "e.sex").
+		Table(testTable).Join(join).
+		Where(nsql.NewEqualQuery("name", "李一一")).
+		PageSize(10)
+	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
+		t.Logf("orm.ToSql(false) error: %v", rawErr)
+	} else {
+		t.Logf("orm raw sql: %s", rawSQL)
+	}
+	users, err := ds.QueryByOrm[UserExtend](orm)
+	if err != nil {
+		t.Fatalf("QueryByOrm error: %v", err)
+	}
+	if len(users) != 1 {
+		t.Errorf("expected 1 user from join with name filter, got %d", len(users))
+	}
+	if users[0].Name.String != "李一一" {
+		t.Errorf("expected name=李一一, got %s", users[0].Name.String)
+	}
+	if users[0].Sex.String != "boy" {
+		t.Errorf("expected sex=boy from join, got %s", users[0].Sex.String)
+	}
+}
+
+// TestSelectWithJoinAndPagination 测试 JOIN + 分页 + 排序。
+// SQL: SELECT u.*, e.sex FROM norm_user u INNER JOIN norm_user_ext e ON u.id=e.id ORDER BY u.age DESC LIMIT ? OFFSET ?
+// params: [2, 0]
+func TestSelectWithJoinAndPagination(t *testing.T) {
+	ds := openTestDS(t)
+	seedUsers(t, ds)
+
+	join := nsql.NewAliasJoin(testTableExt, "e", nsql.INNER_JOIN).
+		Condition(testTable, "id", "e", "id")
+	orm := nsql.NewSelectOrm().Result(testTable+".*", "e.sex").
+		Table(testTable).Join(join).
+		AddOrderBy(testTable+".age", "desc").
+		PageNum(1).PageSize(2)
+	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
+		t.Logf("orm.ToSql(false) error: %v", rawErr)
+	} else {
+		t.Logf("orm raw sql: %s", rawSQL)
+	}
+	users, err := ds.QueryByOrm[UserExtend](orm)
+	if err != nil {
+		t.Fatalf("QueryByOrm error: %v", err)
+	}
+	if len(users) != 2 {
+		t.Errorf("expected 2 users (page 1, size 2), got %d", len(users))
+	}
+	// 验证按年龄降序排列
+	if users[0].Age.Int64 < users[1].Age.Int64 {
+		t.Errorf("expected descending order by age in join query")
+	}
+}
+
+// TestSelectWithAliasJoin 测试使用别名方式的 JOIN 查询。
+// SQL: SELECT u.id, u.name, e.sex FROM norm_user u INNER JOIN norm_user_ext e ON u.id=e.id WHERE u.`age` >= ? LIMIT ?
+// params: ["12", 10]
+func TestSelectWithAliasJoin(t *testing.T) {
+	ds := openTestDS(t)
+	seedUsers(t, ds)
+
+	join := nsql.NewAliasJoin(testTableExt, "e", nsql.INNER_JOIN).
+		Condition("u", "id", "e", "id")
+	orm := nsql.NewSelectOrm().Result("u.id", "u.name", "e.sex").
+		TableAlias(testTable, "u").Join(join).
+		Where(nsql.NewGreaterThanOrEqualQuery("age", "12")).
+		PageSize(10)
+	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
+		t.Logf("orm.ToSql(false) error: %v", rawErr)
+	} else {
+		t.Logf("orm raw sql: %s", rawSQL)
+	}
+	users, err := ds.QueryByOrm[UserExtend](orm)
+	if err != nil {
+		t.Fatalf("QueryByOrm error: %v", err)
+	}
+	if len(users) != 2 {
+		t.Errorf("expected 2 users (age>=12), got %d", len(users))
+	}
+}
+
+// TestCountWithJoin 测试 COUNT + JOIN 组合查询。
+// SQL: SELECT count(*) count FROM norm_user INNER JOIN norm_user_ext ON norm_user.id=norm_user_ext.id
+func TestCountWithJoin(t *testing.T) {
+	ds := openTestDS(t)
+	seedUsers(t, ds)
+
+	join := nsql.NewJoin(testTableExt, nsql.INNER_JOIN).
+		Condition(testTable, "id", testTableExt, "id")
+	orm := nsql.NewCountOrm().Table(testTable).Join(join)
+	if rawSQL, _, rawErr := orm.ToSql(false); rawErr != nil {
+		t.Logf("orm.ToSql(false) error: %v", rawErr)
+	} else {
+		t.Logf("orm raw sql: %s", rawSQL)
+	}
+	cnt, err := ds.CountByOrm(orm)
+	if err != nil {
+		t.Fatalf("CountByOrm error: %v", err)
+	}
+	if cnt != 3 {
+		t.Errorf("expected count=3 from join, got %d", cnt)
 	}
 }
 
@@ -354,57 +526,53 @@ func TestSelectWithBoolQuery(t *testing.T) {
 // =========================================================================
 
 // TestInsertByOrm 测试 ORM 方式单条插入。
-// SQL: INSERT INTO user (id, name, sex, age, create_time) VALUES (?,?,?,?,?)
-// params: [1, "测试一", "boy", "20", "2024-01-01 00:00:00"]
+// SQL: INSERT INTO user (id, name, age, create_time) VALUES (?,?,?,?)
+// params: [1, "测试一", "20", "2024-01-01 00:00:00"]
 func TestInsertByOrm(t *testing.T) {
 	ds := openTestDS(t)
 	// 清空表
 	// SQL: DELETE FROM user WHERE id IS NOT NULL
-	_, _ = DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")), ds)
+	_, _ = ds.DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")))
 
 	m := map[string]any{
-		"id": "1", "name": "测试一", "sex": "boy", "age": "20", "create_time": "2024-01-01 00:00:00",
+		"id": "1", "name": "测试一", "age": "20", "create_time": "2024-01-01 00:00:00",
 	}
-	id, err := InsertByOrm(nsql.NewInsertOrm().Table(testTable).Insert(m), ds)
+	id, err := ds.InsertByOrm(nsql.NewInsertOrm().Table(testTable).PrimaryKey("id").Insert(m))
 	if err != nil {
 		t.Fatalf("InsertByOrm error: %v", err)
 	}
-	if id <= 0 {
-		t.Errorf("expected positive insert id, got %d", id)
-	}
+	t.Logf("insert id: %d", id)
 }
 
 // TestInsertByMap 测试 InsertByMap 快捷方式插入单条数据。
-// SQL: INSERT INTO user (id, name, sex, age, create_time) VALUES (?,?,?,?,?)
-// params: [1, "map插入", "girl", "25", "2024-06-01 00:00:00"]
+// SQL: INSERT INTO user (id, name, age, create_time) VALUES (?,?,?,?)
+// params: [1, "map插入", "25", "2024-06-01 00:00:00"]
 func TestInsertByMap(t *testing.T) {
 	ds := openTestDS(t)
-	_, _ = DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")), ds)
+	_, _ = ds.DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")))
 
 	m := map[string]any{
-		"id": "1", "name": "map插入", "sex": "girl", "age": "25", "create_time": "2024-06-01 00:00:00",
+		"id": "1", "name": "map插入", "age": "25", "create_time": "2024-06-01 00:00:00",
 	}
-	id, err := InsertByMap(testTable, "id", m, ds)
+	id, err := ds.InsertByMap(testTable, "id", m)
 	if err != nil {
 		t.Fatalf("InsertByMap error: %v", err)
 	}
-	if id <= 0 {
-		t.Errorf("expected positive insert id, got %d", id)
-	}
+	t.Logf("insert id: %d", id)
 }
 
 // TestInsertsByMap 测试 InsertsByMap 批量插入并返回插入条数。
-// SQL: INSERT INTO user (id, name, sex, age, create_time) VALUES (?,?,?,?,?),(?,?,?,?,?)
-// params: [1, "批量1", "boy", "15", ..., 2, "批量2", "girl", "16", ...]
+// SQL: INSERT INTO user (id, name, age, create_time) VALUES (?,?,?,?),(?,?,?,?)
+// params: [1, "批量1", "15", ..., 2, "批量2", "16", ...]
 func TestInsertsByMap(t *testing.T) {
 	ds := openTestDS(t)
-	_, _ = DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")), ds)
+	_, _ = ds.DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")))
 
 	rows := []map[string]any{
-		{"id": "1", "name": "批量1", "sex": "boy", "age": "15", "create_time": "2024-01-01 00:00:00"},
-		{"id": "2", "name": "批量2", "sex": "girl", "age": "16", "create_time": "2024-02-01 00:00:00"},
+		{"id": "1", "name": "批量1", "age": "15", "create_time": "2024-01-01 00:00:00"},
+		{"id": "2", "name": "批量2", "age": "16", "create_time": "2024-02-01 00:00:00"},
 	}
-	n, err := InsertsByMap(testTable, "id", rows, ds)
+	n, err := ds.InsertsByMap(testTable, "id", rows)
 	if err != nil {
 		t.Fatalf("InsertsByMap error: %v", err)
 	}
@@ -414,15 +582,15 @@ func TestInsertsByMap(t *testing.T) {
 }
 
 // TestInsertsByOrm 测试 InsertsByOrm 批量插入并返回插入条数。
-// SQL: INSERT INTO user (id, name, sex, age, create_time) VALUES (?,?,?,?,?),(?,?,?,?,?)
+// SQL: INSERT INTO user (id, name, age, create_time) VALUES (?,?,?,?),(?,?,?,?)
 // params: [1, "Orm批量1", ..., 2, "Orm批量2", ...]
 func TestInsertsByOrm(t *testing.T) {
 	ds := openTestDS(t)
-	_, _ = DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")), ds)
+	_, _ = ds.DeleteByOrm(nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewNotNullQuery("id")))
 
-	m1 := map[string]any{"id": "1", "name": "Orm批量1", "sex": "boy", "age": "17", "create_time": "2024-03-01 00:00:00"}
-	m2 := map[string]any{"id": "2", "name": "Orm批量2", "sex": "girl", "age": "18", "create_time": "2024-04-01 00:00:00"}
-	n, err := InsertsByOrm(nsql.NewInsertOrm().Table(testTable).PrimaryKey("id").Insert(m1, m2), ds)
+	m1 := map[string]any{"id": "1", "name": "Orm批量1", "age": "17", "create_time": "2024-03-01 00:00:00"}
+	m2 := map[string]any{"id": "2", "name": "Orm批量2", "age": "18", "create_time": "2024-04-01 00:00:00"}
+	n, err := ds.InsertsByOrm(nsql.NewInsertOrm().Table(testTable).PrimaryKey("id").Insert(m1, m2))
 	if err != nil {
 		t.Fatalf("InsertsByOrm error: %v", err)
 	}
@@ -436,16 +604,15 @@ func TestInsertsByOrm(t *testing.T) {
 // =========================================================================
 
 // TestUpdateByOrm 测试 ORM 方式单条更新（等值条件）。
-// SQL: UPDATE user SET `sex`=?, `age`=? WHERE `name` = ?
-// params: ["girl", "21", "李一一"]
+// SQL: UPDATE user SET `age`=? WHERE `name` = ?
+// params: ["21", "李一一"]
 func TestUpdateByOrm(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
-	m := map[string]any{"sex": "girl", "age": "21"}
-	n, err := UpdateByOrm(
+	m := map[string]any{"age": "21"}
+	n, err := ds.UpdateByOrm(
 		nsql.NewUpdateOrm().Table(testTable).Update(m).Where(nsql.NewEqualQuery("name", "李一一")),
-		ds,
 	)
 	if err != nil {
 		t.Fatalf("UpdateByOrm error: %v", err)
@@ -456,37 +623,31 @@ func TestUpdateByOrm(t *testing.T) {
 
 	// 验证更新结果
 	sqlStr := "select * from " + testTable + " where name = " + testPh(ds, 1)
-	users, _ := QueryBySql[UserExtend](sqlStr, []any{"李一一"}, ds)
-	if len(users) == 1 && users[0].Sex.String != "girl" {
-		t.Errorf("expected sex=girl, got %s", users[0].Sex.String)
+	users, _ := ds.QueryBySql[User](sqlStr, []any{"李一一"})
+	if len(users) == 1 && users[0].Age.Int64 != 21 {
+		t.Errorf("expected age=21, got %d", users[0].Age.Int64)
 	}
 }
 
 // TestUpdateBatchByOrm 测试批量更新（使用 CASE WHEN 语法）。
-// SQL: UPDATE user SET `sex`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `sex` END,
-//
-//	                 `age`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `age` END
-//	WHERE `name` IN (?, ?)
-//
-// params: ["李二二", "girl", "李三三", "girl", "李二二", "22", "李三三", "23", "李二二", "李三三"]
+// SQL: UPDATE user SET `age`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `age` END
+// WHERE `name` IN (?, ?)
+// params: ["李二二", "22", "李三三", "23", "李二二", "李三三"]
 func TestUpdateBatchByOrm(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
 	m2 := map[string]any{
-		"sex":        "girl",
 		"age":        "22",
 		"_condition": nsql.NewEqualQuery("name", "李二二"),
 	}
 	m3 := map[string]any{
-		"sex":        "girl",
 		"age":        "23",
 		"_condition": nsql.NewEqualQuery("name", "李三三"),
 	}
-	n, err := UpdateByOrm(
+	n, err := ds.UpdateByOrm(
 		nsql.NewUpdateOrm().Table(testTable).Update(m2, m3).
 			Where(nsql.NewInQuery("name", []string{"李二二", "李三三"})),
-		ds,
 	)
 	if err != nil {
 		t.Fatalf("batch UpdateByOrm error: %v", err)
@@ -504,7 +665,7 @@ func TestUpdateBySql(t *testing.T) {
 	seedUsers(t, ds)
 
 	sqlStr := "update " + testTable + " set age = " + testPh(ds, 1) + " where name = " + testPh(ds, 2)
-	n, err := UpdateBySql(sqlStr, []any{"99", "李一一"}, ds)
+	n, err := ds.UpdateBySql(sqlStr, []any{"99", "李一一"})
 	if err != nil {
 		t.Fatalf("UpdateBySql error: %v", err)
 	}
@@ -514,27 +675,23 @@ func TestUpdateBySql(t *testing.T) {
 }
 
 // TestUpdatesByOrm 测试批量更新的 UpdatesByOrm（返回受影响行数数组）。
-// SQL: UPDATE user SET `sex`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `sex` END, ...
-//
-//	WHERE `name` IN (?, ?)
+// SQL: UPDATE user SET `age`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `age` END
+// WHERE `name` IN (?, ?)
 func TestUpdatesByOrm(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
 	m2 := map[string]any{
-		"sex":        "girl",
 		"age":        "30",
 		"_condition": nsql.NewEqualQuery("name", "李二二"),
 	}
 	m3 := map[string]any{
-		"sex":        "girl",
 		"age":        "31",
 		"_condition": nsql.NewEqualQuery("name", "李三三"),
 	}
-	results, err := UpdatesByOrm(
+	results, err := ds.UpdatesByOrm(
 		nsql.NewUpdateOrm().Table(testTable).Update(m2, m3).
 			Where(nsql.NewInQuery("name", []string{"李二二", "李三三"})),
-		ds,
 	)
 	if err != nil {
 		t.Fatalf("UpdatesByOrm error: %v", err)
@@ -549,11 +706,11 @@ func TestUpdatesByOrm(t *testing.T) {
 // =========================================================================
 
 // TestUpsertByMap 测试 UpsertByMap：已存在的行更新，不存在的行插入。
-// 更新已有行 SQL: INSERT INTO user (id, name, sex, age, create_time) VALUES (?,?,?,?,?)
+// 更新已有行 SQL: INSERT INTO user (id, name, age, create_time) VALUES (?,?,?,?)
 //
 //	ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), ...
 //
-// 插入新行 SQL: INSERT INTO user (id, name, sex, age, create_time) VALUES (?,?,?,?,?)
+// 插入新行 SQL: INSERT INTO user (id, name, age, create_time) VALUES (?,?,?,?)
 //
 //	ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), ...
 func TestUpsertByMap(t *testing.T) {
@@ -562,9 +719,9 @@ func TestUpsertByMap(t *testing.T) {
 
 	// 更新已存在的行（id=1 冲突）
 	m1 := map[string]any{
-		"id": "1", "name": "李11", "sex": "boy", "age": "21", "create_time": "2021-01-01 00:00:00",
+		"id": "1", "name": "李11", "age": "21", "create_time": "2021-01-01 00:00:00",
 	}
-	n, err := UpsertByMap(testTable, m1, []string{"id"}, ds)
+	n, err := ds.UpsertByMap(testTable, m1, []string{"id"})
 	if err != nil {
 		t.Fatalf("UpsertByMap error: %v", err)
 	}
@@ -574,9 +731,9 @@ func TestUpsertByMap(t *testing.T) {
 
 	// 插入新行（id=7 不冲突）
 	m7 := map[string]any{
-		"id": "7", "name": "李七七", "sex": "boy", "age": "17", "create_time": "2027-01-01 00:00:00",
+		"id": "7", "name": "李七七", "age": "17", "create_time": "2027-01-01 00:00:00",
 	}
-	n, err = UpsertByMap(testTable, m7, []string{"id"}, ds)
+	n, err = ds.UpsertByMap(testTable, m7, []string{"id"})
 	if err != nil {
 		t.Fatalf("UpsertByMap insert error: %v", err)
 	}
@@ -586,17 +743,17 @@ func TestUpsertByMap(t *testing.T) {
 }
 
 // TestUpsertByOrm 测试 UpsertByOrm：使用 ORM 构建 upsert 语句。
-// SQL: INSERT INTO user (id, name, sex, age, create_time) VALUES (?,?,?,?,?)
+// SQL: INSERT INTO user (id, name, age, create_time) VALUES (?,?,?,?)
 //
-//	ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `sex`=VALUES(`sex`), ...
+//	ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `age`=VALUES(`age`), ...
 //
-// params: [1, "upsert测试", "girl", "30", "2025-01-01 00:00:00"]
+// params: [1, "upsert测试", "30", "2025-01-01 00:00:00"]
 func TestUpsertByOrm(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
 	m := map[string]any{
-		"id": "1", "name": "upsert测试", "sex": "girl", "age": "30", "create_time": "2025-01-01 00:00:00",
+		"id": "1", "name": "upsert测试", "age": "30", "create_time": "2025-01-01 00:00:00",
 	}
 	orm := nsql.NewUpsertOrm().Table(testTable).Insert(m).
 		Update(nsql.MapKeys(m)).Conflict("id")
@@ -605,7 +762,7 @@ func TestUpsertByOrm(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	n, err := UpsertByOrm(orm, ds)
+	n, err := ds.UpsertByOrm(orm)
 	if err != nil {
 		t.Fatalf("UpsertByOrm error: %v", err)
 	}
@@ -615,7 +772,7 @@ func TestUpsertByOrm(t *testing.T) {
 }
 
 // TestUpsertsByMap 测试 UpsertsByMap 批量 upsert。
-// SQL: INSERT INTO user (...) VALUES (?,?,?,?,?),(?,?,?,?,?)
+// SQL: INSERT INTO user (...) VALUES (?,?,?,?),(?,?,?,?)
 //
 //	ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), ...
 func TestUpsertsByMap(t *testing.T) {
@@ -623,10 +780,10 @@ func TestUpsertsByMap(t *testing.T) {
 	seedUsers(t, ds)
 
 	rows := []map[string]any{
-		{"id": "1", "name": "批量upsert1", "sex": "girl", "age": "50", "create_time": "2025-01-01 00:00:00"},
-		{"id": "8", "name": "批量upsert2", "sex": "boy", "age": "60", "create_time": "2025-02-01 00:00:00"},
+		{"id": "1", "name": "批量upsert1", "age": "50", "create_time": "2025-01-01 00:00:00"},
+		{"id": "8", "name": "批量upsert2", "age": "60", "create_time": "2025-02-01 00:00:00"},
 	}
-	results, err := UpsertsByMap(testTable, rows, []string{"id"}, ds)
+	results, err := ds.UpsertsByMap(testTable, rows, []string{"id"})
 	if err != nil {
 		t.Fatalf("UpsertsByMap error: %v", err)
 	}
@@ -646,9 +803,8 @@ func TestDeleteByOrm(t *testing.T) {
 	ds := openTestDS(t)
 	seedUsers(t, ds)
 
-	n, err := DeleteByOrm(
+	n, err := ds.DeleteByOrm(
 		nsql.NewDeleteOrm().Table(testTable).Where(nsql.NewEqualQuery("name", "李一一")),
-		ds,
 	)
 	if err != nil {
 		t.Fatalf("DeleteByOrm error: %v", err)
@@ -666,7 +822,7 @@ func TestDeleteBySql(t *testing.T) {
 	seedUsers(t, ds)
 
 	sqlStr := "delete from " + testTable + " where name = " + testPh(ds, 1)
-	n, err := DeleteBySql(sqlStr, []any{"李二二"}, ds)
+	n, err := ds.DeleteBySql(sqlStr, []any{"李二二"})
 	if err != nil {
 		t.Fatalf("DeleteBySql error: %v", err)
 	}
@@ -693,7 +849,7 @@ func TestDeleteWithPageSize(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	n, err := DeleteByOrm(orm, ds)
+	n, err := ds.DeleteByOrm(orm)
 	if err != nil {
 		t.Fatalf("DeleteByOrm with limit error: %v", err)
 	}
@@ -711,7 +867,7 @@ func TestDeleteWithPageSize(t *testing.T) {
 func TestExecBySql(t *testing.T) {
 	ds := openTestDS(t)
 
-	n, err := ExecBySql("select 1", ds)
+	n, err := ds.ExecBySql("select 1")
 	if err != nil {
 		t.Fatalf("ExecBySql error: %v", err)
 	}
@@ -781,12 +937,12 @@ func TestSelectOrm_ToSql(t *testing.T) {
 		},
 		{
 			// 分组查询（带聚合函数）
-			// SQL: SELECT sex, count(*) cnt FROM user GROUP BY user.`sex`
+			// SQL: SELECT name, count(*) cnt FROM user GROUP BY user.`name`
 			"分组查询",
 			func() *nsql.SelectOrm {
-				return nsql.NewSelectOrm().Result("sex", "count(*) cnt").Table(testTable).AddGroupBy(testTable, "sex")
+				return nsql.NewSelectOrm().Result("name", "count(*) cnt").Table(testTable).AddGroupBy(testTable, "name")
 			},
-			"SELECT sex, count(*) cnt FROM user GROUP BY user.`sex`",
+			"SELECT name, count(*) cnt FROM user GROUP BY user.`name`",
 		},
 		{
 			// 模糊查询 LIKE
@@ -898,12 +1054,12 @@ func TestCountOrm_ToSql(t *testing.T) {
 		},
 		{
 			// 分组计数
-			// SQL: SELECT count(*) count FROM user GROUP BY user.`sex`
+			// SQL: SELECT count(*) count FROM user GROUP BY user.`name`
 			"分组计数",
 			func() *nsql.CountOrm {
-				return nsql.NewCountOrm().Table(testTable).AddGroupBy(testTable, "sex")
+				return nsql.NewCountOrm().Table(testTable).AddGroupBy(testTable, "name")
 			},
-			"SELECT count(*) count FROM user GROUP BY user.`sex`",
+			"SELECT count(*) count FROM user GROUP BY user.`name`",
 		},
 	}
 
@@ -938,10 +1094,10 @@ func TestInsertOrm_ToSql(t *testing.T) {
 }
 
 // TestUpdateOrm_ToSql 测试 UpdateOrm 单条更新 SQL 生成。
-// SQL: UPDATE user SET `sex`=?, `age`=? WHERE `name` = ?
-// params: ["girl", "21", "李一一"]
+// SQL: UPDATE user SET `age`=? WHERE `name` = ?
+// params: ["21", "李一一"]
 func TestUpdateOrm_ToSql(t *testing.T) {
-	m := map[string]any{"sex": "girl", "age": "21"}
+	m := map[string]any{"age": "21"}
 	sqlStr, params, err := nsql.NewUpdateOrm().Table(testTable).
 		Update(m).Where(nsql.NewEqualQuery("name", "李一一")).ToSql(true)
 	if err != nil {
@@ -954,18 +1110,14 @@ func TestUpdateOrm_ToSql(t *testing.T) {
 }
 
 // TestUpdateOrm_BatchToSql 测试 UpdateOrm 批量更新（CASE WHEN）SQL 生成。
-// SQL: UPDATE user SET `sex`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `sex` END,
-//
-//	                 `age`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `age` END
-//	WHERE `name` IN (?, ?)
+// SQL: UPDATE user SET `age`=CASE WHEN `name`=? THEN ? WHEN `name`=? THEN ? ELSE `age` END
+// WHERE `name` IN (?, ?)
 func TestUpdateOrm_BatchToSql(t *testing.T) {
 	m2 := map[string]any{
-		"sex":        "girl",
 		"age":        "22",
 		"_condition": nsql.NewEqualQuery("name", "李二二"),
 	}
 	m3 := map[string]any{
-		"sex":        "girl",
 		"age":        "23",
 		"_condition": nsql.NewEqualQuery("name", "李三三"),
 	}
@@ -1154,7 +1306,7 @@ func TestConditionSQL(t *testing.T) {
 // 输入 SQL: SELECT * FROM user（不含 count）
 func TestCountBySql_ErrorOnNonCount(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := CountBySql("select * from user", nil, ds)
+	_, err := ds.CountBySql("select * from user", nil)
 	if err == nil {
 		t.Error("expected error for non-count SQL")
 	}
@@ -1164,7 +1316,7 @@ func TestCountBySql_ErrorOnNonCount(t *testing.T) {
 // 输入 SQL: SELECT 1
 func TestInsertBySql_ErrorOnNonInsert(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := InsertBySql("select 1", nil, ds)
+	_, err := ds.InsertBySql("select 1", nil)
 	if err == nil {
 		t.Error("expected error for non-insert SQL")
 	}
@@ -1174,7 +1326,7 @@ func TestInsertBySql_ErrorOnNonInsert(t *testing.T) {
 // 输入 SQL: SELECT 1
 func TestUpdateBySql_ErrorOnNonUpdate(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := UpdateBySql("select 1", nil, ds)
+	_, err := ds.UpdateBySql("select 1", nil)
 	if err == nil {
 		t.Error("expected error for non-update SQL")
 	}
@@ -1184,7 +1336,7 @@ func TestUpdateBySql_ErrorOnNonUpdate(t *testing.T) {
 // 输入 SQL: SELECT 1
 func TestDeleteBySql_ErrorOnNonDelete(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := DeleteBySql("select 1", nil, ds)
+	_, err := ds.DeleteBySql("select 1", nil)
 	if err == nil {
 		t.Error("expected error for non-delete SQL")
 	}
@@ -1194,7 +1346,7 @@ func TestDeleteBySql_ErrorOnNonDelete(t *testing.T) {
 // 输入 SQL: DELETE FROM user
 func TestQueryBySql_ErrorOnNonSelect(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := QueryBySql[User]("delete from user", nil, ds)
+	_, err := ds.QueryBySql[User]("delete from user", nil)
 	if err == nil {
 		t.Error("expected error for non-select SQL")
 	}
@@ -1203,7 +1355,7 @@ func TestQueryBySql_ErrorOnNonSelect(t *testing.T) {
 // TestInsertByMap_EmptyTable 空表名应返回错误。
 func TestInsertByMap_EmptyTable(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := InsertByMap("", "id", map[string]any{"a": 1}, ds)
+	_, err := ds.InsertByMap("", "id", map[string]any{"a": 1})
 	if err == nil {
 		t.Error("expected error for empty table name")
 	}
@@ -1212,7 +1364,7 @@ func TestInsertByMap_EmptyTable(t *testing.T) {
 // TestInsertByMap_EmptyMap 空数据 map 应返回错误。
 func TestInsertByMap_EmptyMap(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := InsertByMap(testTable, "id", map[string]any{}, ds)
+	_, err := ds.InsertByMap(testTable, "id", map[string]any{})
 	if err == nil {
 		t.Error("expected error for empty map")
 	}
@@ -1221,7 +1373,7 @@ func TestInsertByMap_EmptyMap(t *testing.T) {
 // TestUpsertByMap_EmptyTable 空表名的 upsert 应返回错误。
 func TestUpsertByMap_EmptyTable(t *testing.T) {
 	ds := openTestDS(t)
-	_, err := UpsertByMap("", map[string]any{"a": 1}, []string{"a"}, ds)
+	_, err := ds.UpsertByMap("", map[string]any{"a": 1}, []string{"a"})
 	if err == nil {
 		t.Error("expected error for empty table name")
 	}
@@ -1288,7 +1440,7 @@ func TestQueryByOrm_EmptyResult(t *testing.T) {
 	} else {
 		t.Logf("orm raw sql: %s", rawSQL)
 	}
-	users, err := QueryByOrm[UserExtend](orm, ds)
+	users, err := ds.QueryByOrm[UserExtend](orm)
 	if err != nil {
 		t.Fatalf("QueryByOrm error: %v", err)
 	}

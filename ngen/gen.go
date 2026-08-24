@@ -104,25 +104,30 @@ type Field struct {
 	FieldJsonTag         string         //tag json
 	FieldFormTag         string         //tag form
 	FieldDefaultTag      string         //tag 默认值
-	Comment              string         //表中字段注释
+	IsArray              bool
+	Comment              string //表中字段注释
 }
 
 var dbType = map[string]goType{
-	"int":                {"int64", "sql.NullInt64", "Int64", "0"},
-	"int4":               {"int64", "sql.NullInt64", "Int64", "0"},
+	"int":                {"int32", "sql.NullInt32", "Int32", "0"},
+	"int2":               {"int16", "sql.NullInt16", "Int16", "0"},
+	"int4":               {"int32", "sql.NullInt32", "Int32", "0"},
 	"int8":               {"int64", "sql.NullInt64", "Int64", "0"},
-	"integer":            {"int64", "sql.NullInt64", "Int64", "0"},
-	"tinyint":            {"int64", "sql.NullInt64", "Int64", "0"},
-	"smallint":           {"int64", "sql.NullInt64", "Int64", "0"},
-	"mediumint":          {"int64", "sql.NullInt64", "Int64", "0"},
+	"_int2":              {"[]int16", "[]int16", "[]int16", "0"},
+	"_int4":              {"[]int32", "[]int32", "[]int32", "0"},
+	"_int8":              {"[]int64", "[]int64", "[]int64", "0"},
+	"integer":            {"int32", "sql.NullInt32", "Int32", "0"},
+	"tinyint":            {"int32", "sql.NullInt32", "Int32", "0"},
+	"smallint":           {"int32", "sql.NullInt32", "Int32", "0"},
+	"mediumint":          {"int32", "sql.NullInt32", "Int32", "0"},
 	"bigint":             {"int64", "sql.NullInt64", "Int64", "0"},
-	"int unsigned":       {"int64", "sql.NullInt64", "Int64", "0"},
-	"integer unsigned":   {"int64", "sql.NullInt64", "Int64", "0"},
-	"tinyint unsigned":   {"int64", "sql.NullInt64", "Int64", "0"},
-	"smallint unsigned":  {"int64", "sql.NullInt64", "Int64", "0"},
-	"mediumint unsigned": {"int64", "sql.NullInt64", "Int64", "0"},
+	"int unsigned":       {"int32", "sql.NullInt32", "Int32", "0"},
+	"integer unsigned":   {"int32", "sql.NullInt32", "Int32", "0"},
+	"tinyint unsigned":   {"int32", "sql.NullInt32", "Int32", "0"},
+	"smallint unsigned":  {"int32", "sql.NullInt32", "Int32", "0"},
+	"mediumint unsigned": {"int32", "sql.NullInt32", "Int32", "0"},
 	"bigint unsigned":    {"int64", "sql.NullInt64", "Int64", "0"},
-	"bit":                {"int64", "sql.NullInt64", "Int64", "0"},
+	"bit":                {"int32", "sql.NullInt32", "int32", "0"},
 	"bool":               {"bool", "sql.NullBool", "Bool", "false"},
 	"enum":               {"string", "sql.NullString", "String", "\"\""},
 	"set":                {"string", "sql.NullString", "String", "\"\""},
@@ -210,6 +215,7 @@ func getFields(tableName, driverName string, db *sql.DB) ([]Field, []Field, erro
 		field.FieldTypeDefault = dbType[field.ColumnType].defaultValue
 		field.FieldNullType = dbType[field.ColumnType].nullType
 		field.FieldNullTypeValue = dbType[field.ColumnType].nullTypeValue
+		field.IsArray = strings.HasPrefix(field.FieldNullType, "[]")
 		field.FieldOrmTag = fmt.Sprintf("db:\"%v\"", field.ColumnName)
 		field.FieldJsonTag = fmt.Sprintf("json:\"%v\"", field.ColumnName)
 		field.FieldFormTag = fmt.Sprintf("form:\"%v\"", field.ColumnName)
@@ -271,9 +277,9 @@ func (gen *Generator) Gen(modules []Module) error {
 		module.ModelFilePath = module.ModulePath + "/" + module.ModelPackageName
 
 		module.ExtendPackageName = "extend"
-		module.ExtendPackagePath = gen.project + urls[1] + "/" + module.ExtendPackageName
-		module.ExtendFileName = tableName + "_" + module.ExtendPackageName + ".go"
-		module.ExtendFilePath = module.ModulePath + "/" + module.ExtendPackageName
+		module.ExtendPackagePath = module.ModelPackagePath
+		module.ExtendFileName = tableName + "_extend.go"
+		module.ExtendFilePath = module.ModelFilePath
 
 		module.ViewPackageName = "view"
 		module.ViewPackagePath = gen.project + urls[1] + "/" + module.ViewPackageName
@@ -341,7 +347,7 @@ func genFile(table *Module, packageName string) {
 		templateStr = getExtendTemplate()
 		filePath = table.ExtendFilePath
 		file = filePath + "/" + table.ExtendFileName
-		if fileIsExist(file) { //view 不覆盖
+		if fileIsExist(file) { //extend 不覆盖
 			return
 		}
 	case "view":
@@ -411,7 +417,6 @@ func getModelTemplate() string {
 	
 	import (
 		"database/sql"
-		"time"
 	)
 	
 	type {{.TableNameUpperCamel}}Model struct {
@@ -422,11 +427,19 @@ func getModelTemplate() string {
 	func (m *{{.TableNameUpperCamel}}Model) ToMap(includeEmpty bool) map[string]any {
 		view := make(map[string]any)
 		{{range $field := .Fields}}
+			{{if .IsArray}}
+			if len(m.{{ .FieldName }}) > 0 {
+				view[{{- .ColumnNameUpper -}}] = m.{{ .FieldName }}
+			} else if includeEmpty {
+				view[{{- .ColumnNameUpper -}}] = nil
+			}
+			{{else}}
 			if m.{{ .FieldName }}.Valid {
 				view[{{- .ColumnNameUpper -}}] = m.{{ .FieldName }}.{{ .FieldNullTypeValue}}
 			} else if includeEmpty {
 				view[{{- .ColumnNameUpper -}}] = nil
 			}
+			{{end}}
 		{{end}}
 		return view
 	}`
@@ -463,7 +476,6 @@ func getViewTemplate() string {
 	
 	import (
 		"{{.ModelPackagePath}}"
-		"time"
 	)
 	type {{.TableNameUpperCamel}}View struct {
 		{{range $field := .Fields}}{{ .FieldName }}  {{ .FieldType }} ` + "`{{ .FieldJsonTag }}`" + ` // {{ .Comment }}
@@ -574,6 +586,17 @@ func getDaoTemplate() string {
 		return ms, nil
 	}
 
+	func QueryBySql(sqlStr string, params []any) ([]model.{{.TableNameUpperCamel}}Model, error) {
+		ds, err := GetDataSource()
+		if err != nil {
+			return nil, err
+		}
+		ms,err := norm.QueryBySql[model.{{.TableNameUpperCamel}}Model](sqlStr, params, ds)
+		if err != nil {
+			return nil, err
+		}
+		return ms, nil
+	}
 
 	func QueryExtend(orm  *nsql.SelectOrm) ([]model.{{.TableNameUpperCamel}}Extend, error) {
 		ds, err := GetDataSource()
@@ -586,7 +609,19 @@ func getDaoTemplate() string {
 		}
 		return ms, nil
 	}
-	
+
+	func QueryExtendBySql(sqlStr string, params []any) ([]model.{{.TableNameUpperCamel}}Extend, error) {
+		ds, err := GetDataSource()
+		if err != nil {
+			return nil, err
+		}
+		ms,err := norm.QueryBySql[model.{{.TableNameUpperCamel}}Extend](sqlStr, params, ds)
+		if err != nil {
+			return nil, err
+		}
+		return ms, nil
+	}
+
 	{{if eq (len .PrimaryKeyFields) 1}} 
 
 	func QueryByPkeys(id []{{(index .PrimaryKeyFields 0).FieldType}}) ([]model.{{.TableNameUpperCamel}}Model, error) {
