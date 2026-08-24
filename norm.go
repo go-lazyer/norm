@@ -613,14 +613,14 @@ func (ds *DataSource) ExecBySql(sqlStr string) (int64, error) {
 //   - local=false: 文件在数据库服务器上。
 //     MySQL: LOAD DATA INFILE（无需注册）
 //     pgx:   COPY table FROM '/server/path'（服务端直接读取）
-func LoadDataByOrm(orm *nsql.LoadDataOrm, ds DataSource) (int64, error) {
+func (ds *DataSource) LoadDataByOrm(orm *nsql.LoadDataOrm) (int64, error) {
 	orm.DriverName(ds.DriverName)
 
 	if driver.IsPgx(ds.DriverName) {
 		if orm.GetLocal() {
-			return loadDataByPgxCopyFrom(orm, ds)
+			return loadDataByPgxCopyFrom(orm, *ds)
 		}
-		return loadDataByPgxServerCopy(orm, ds)
+		return loadDataByPgxServerCopy(orm, *ds)
 	}
 
 	// MySQL / database/sql 路径
