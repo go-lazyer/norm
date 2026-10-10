@@ -78,13 +78,13 @@ func TestGetDaoTemplateIncludesQueryBySql(t *testing.T) {
 	if !strings.Contains(content, "func QueryBySql(sqlStr string, params []any) ([]model.UserModel, error)") {
 		t.Fatalf("rendered dao template missing QueryBySql wrapper:\n%s", content)
 	}
-	if !strings.Contains(content, "norm.QueryBySql[model.UserModel](sqlStr, params, ds)") {
-		t.Fatalf("rendered dao template missing norm.QueryBySql call:\n%s", content)
+	if !strings.Contains(content, "ds.QueryBySql[model.UserModel](sqlStr, params)") {
+		t.Fatalf("rendered dao template missing ds.QueryBySql call:\n%s", content)
 	}
 	if !strings.Contains(content, "func QueryExtendBySql(sqlStr string, params []any) ([]model.UserExtend, error)") {
 		t.Fatalf("rendered dao template missing QueryExtendBySql wrapper:\n%s", content)
 	}
-	if !strings.Contains(content, "norm.QueryBySql[model.UserExtend](sqlStr, params, ds)") {
-		t.Fatalf("rendered dao template missing extend norm.QueryBySql call:\n%s", content)
+	if !strings.Contains(content, "ds.QueryBySql[model.UserExtend](sqlStr, params)") {
+		t.Fatalf("rendered dao template missing extend ds.QueryBySql call:\n%s", content)
 	}
 }

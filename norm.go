@@ -94,6 +94,13 @@ func (ds *DataSource) GetPgxPool() (*pgxpool.Pool, error) {
 	return ds.pgxPool, nil
 }
 
+func (ds *DataSource) GetDb() (*sql.DB, error) {
+	if ds.db == nil {
+		return nil, errors.New("db not initialized")
+	}
+	return ds.db, nil
+}
+
 // SetPgxTx sets a pgx native transaction on the DataSource for external use.
 func (ds *DataSource) SetPgxTx(tx pgx.Tx) {
 	ds.pgxTx = tx

@@ -539,7 +539,7 @@ func getDaoTemplate() string {
 		if err != nil {
 			return 0, err
 		}
-		return norm.CountByOrm(orm,ds)
+		return ds.CountByOrm(orm)
 	}
 
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
@@ -554,8 +554,8 @@ func getDaoTemplate() string {
 		query := nsql.NewBoolQuery(){{range $field := .PrimaryKeyFields}} .And(nsql.NewEqualQuery(model.{{ .ColumnNameUpper }}, {{ .ColumnNameLowerCamel }})) {{end}}
 		{{end}}
 		orm := nsql.NewSelectOrm().Table(model.TABLE_NAME).Where(query)
-		ms,err := norm.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm, ds)
-		if len(ms) == 0 ||err != nil {
+		ms, err := ds.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm)
+		if len(ms) == 0 || err != nil {
 			return model.{{.TableNameUpperCamel}}Model{}, err
 		}
 		return ms[0], nil
@@ -567,7 +567,7 @@ func getDaoTemplate() string {
 		if err != nil {
 			return model.{{.TableNameUpperCamel}}Model{}, err
 		}
-		ms,err := norm.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm, ds)
+		ms, err := ds.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm)
 		if len(ms) == 0 || err != nil {
 			return model.{{.TableNameUpperCamel}}Model{}, err
 		}
@@ -579,7 +579,7 @@ func getDaoTemplate() string {
 		if err != nil {
 			return nil, err
 		}
-		ms,err := norm.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm, ds)
+		ms, err := ds.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm)
 		if err != nil {
 			return nil, err
 		}
@@ -591,7 +591,7 @@ func getDaoTemplate() string {
 		if err != nil {
 			return nil, err
 		}
-		ms,err := norm.QueryBySql[model.{{.TableNameUpperCamel}}Model](sqlStr, params, ds)
+		ms, err := ds.QueryBySql[model.{{.TableNameUpperCamel}}Model](sqlStr, params)
 		if err != nil {
 			return nil, err
 		}
@@ -603,7 +603,7 @@ func getDaoTemplate() string {
 		if err != nil {
 			return nil, err
 		}
-		ms,err := norm.QueryByOrm[model.{{.TableNameUpperCamel}}Extend](orm, ds)
+		ms, err := ds.QueryByOrm[model.{{.TableNameUpperCamel}}Extend](orm)
 		if err != nil {
 			return nil, err
 		}
@@ -615,7 +615,7 @@ func getDaoTemplate() string {
 		if err != nil {
 			return nil, err
 		}
-		ms,err := norm.QueryBySql[model.{{.TableNameUpperCamel}}Extend](sqlStr, params, ds)
+		ms, err := ds.QueryBySql[model.{{.TableNameUpperCamel}}Extend](sqlStr, params)
 		if err != nil {
 			return nil, err
 		}
@@ -630,13 +630,12 @@ func getDaoTemplate() string {
 			return nil, err
 		}
 		orm := nsql.NewSelectOrm().Table(model.TABLE_NAME).Where(nsql.NewInQuery(model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}, id))
-		ms,err := norm.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm, ds)
+		ms, err := ds.QueryByOrm[model.{{.TableNameUpperCamel}}Model](orm)
 		if err != nil {
 			return nil, err
 		}
 		return ms, nil
 	}
-
 
 	func QueryMapByPkeys(ids []{{(index .PrimaryKeyFields 0).FieldType}}) (map[{{(index .PrimaryKeyFields 0).FieldType}}]model.{{.TableNameUpperCamel}}Model, error) {
 		ms, err := QueryByPkeys(ids)
@@ -677,7 +676,7 @@ func getDaoTemplate() string {
 		if len(tx) > 0 {
 			ds.SetTx(tx[0])
 		}
-		return norm.InsertByMap(model.TABLE_NAME, {{if gt (len .PrimaryKeyFields) 0}}model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}{{else}}""{{end}}, m.ToMap(false), ds)
+		return ds.InsertByMap(model.TABLE_NAME, {{if gt (len .PrimaryKeyFields) 0}}model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}{{else}}""{{end}}, m.ToMap(false))
 	}
 
 	func Inserts(ms []model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) (int64, error) {
@@ -694,7 +693,7 @@ func getDaoTemplate() string {
 			maps = append(maps, m.ToMap(false))
 		}
 
-		return norm.InsertsByMap(model.TABLE_NAME, {{if gt (len .PrimaryKeyFields) 0}}model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}{{else}}""{{end}}, maps, ds)
+		return ds.InsertsByMap(model.TABLE_NAME, {{if gt (len .PrimaryKeyFields) 0}}model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}{{else}}""{{end}}, maps)
 	}
 
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
@@ -713,7 +712,7 @@ func getDaoTemplate() string {
 		query := nsql.NewBoolQuery(){{range $field := .PrimaryKeyFields}} .And(nsql.NewEqualQuery(model.{{ .ColumnNameUpper }}, m.{{.FieldName}}.{{.FieldNullTypeValue}})) {{end}}
 		{{end -}}
 		orm := nsql.NewUpdateOrm().Table(model.TABLE_NAME).Update(m.ToMap(false)).Where(query)
-		return norm.UpdateByOrm(orm,ds)
+		return ds.UpdateByOrm(orm)
 	}
 	{{end}}
 	func UpdateByOrm(orm *nsql.UpdateOrm, tx ...*sql.Tx) (int64, error) {
@@ -724,7 +723,7 @@ func getDaoTemplate() string {
 		if len(tx) > 0 {
 			ds.SetTx(tx[0])
 		}
-		return norm.UpdateByOrm(orm,ds)
+		return ds.UpdateByOrm(orm)
 	}
 	func Upsert(m model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) (int64, error) {
 		ds, err := GetDataSource()
@@ -734,7 +733,7 @@ func getDaoTemplate() string {
 		if len(tx) > 0 {
 			ds.SetTx(tx[0])
 		}
-		return norm.UpsertByMap(model.TABLE_NAME, m.ToMap(false), {{if gt (len .PrimaryKeyFields) 0}}[]string{ {{range $i,$field := .PrimaryKeyFields}}{{if ne $i 0}}, {{end}}model.{{ .ColumnNameUpper }}{{end}} }{{else}}nil{{end}}, ds)
+		return ds.UpsertByMap(model.TABLE_NAME, m.ToMap(false), {{if gt (len .PrimaryKeyFields) 0}}[]string{ {{range $i,$field := .PrimaryKeyFields}}{{if ne $i 0}}, {{end}}model.{{ .ColumnNameUpper }}{{end}} }{{else}}nil{{end}})
 	}
 
 	func Upserts(ms []model.{{.TableNameUpperCamel}}Model, tx ...*sql.Tx) ([]int64, error) {
@@ -749,7 +748,7 @@ func getDaoTemplate() string {
 		for _, model := range ms {
 			maps = append(maps, model.ToMap(false))
 		}
-		return norm.UpsertsByMap(model.TABLE_NAME, maps, {{if gt (len .PrimaryKeyFields) 0}}[]string{ {{range $i,$field := .PrimaryKeyFields}}{{if ne $i 0}}, {{end}}model.{{ .ColumnNameUpper }}{{end}} }{{else}}nil{{end}}, ds)
+		return ds.UpsertsByMap(model.TABLE_NAME, maps, {{if gt (len .PrimaryKeyFields) 0}}[]string{ {{range $i,$field := .PrimaryKeyFields}}{{if ne $i 0}}, {{end}}model.{{ .ColumnNameUpper }}{{end}} }{{else}}nil{{end}})
 	}
 
 	func Delete(orm  *nsql.DeleteOrm, tx... *sql.Tx) (int64, error) {
@@ -760,7 +759,7 @@ func getDaoTemplate() string {
 		if len(tx) > 0 {
 			ds.SetTx(tx[0])
 		}
-		return norm.DeleteByOrm(orm,ds)
+		return ds.DeleteByOrm(orm)
 	}
 	{{ if gt (len .PrimaryKeyFields) 0 -}}
 	func DeleteByPkey({{range $i,$field := .PrimaryKeyFields}} {{if ne $i 0}},{{end}}{{ .ColumnNameLowerCamel }} any  {{end}}, tx... *sql.Tx) (int64, error) {
@@ -777,7 +776,7 @@ func getDaoTemplate() string {
 		query := nsql.NewBoolQuery(){{range $field := .PrimaryKeyFields}} .And(nsql.NewEqualQuery(model.{{ .ColumnNameUpper }}, {{ .ColumnNameLowerCamel }})) {{end}}
 		orm := nsql.NewDeleteOrm().Table(model.TABLE_NAME).Where(query)
 		{{ end -}}
-		return norm.DeleteByOrm(orm,ds)
+		return ds.DeleteByOrm(orm)
 	}
 	{{ end -}}
 	{{ if eq (len .PrimaryKeyFields) 1 -}}
@@ -790,7 +789,7 @@ func getDaoTemplate() string {
 			ds.SetTx(tx[0])
 		}
 		orm := nsql.NewDeleteOrm().Table(model.TABLE_NAME).Where(nsql.NewInQuery(model.{{(index .PrimaryKeyFields 0).ColumnNameUpper}}, ids))
-		return norm.DeleteByOrm(orm,ds)
+		return ds.DeleteByOrm(orm)
 	}
 	{{ end -}}
 
